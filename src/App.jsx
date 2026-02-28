@@ -1,375 +1,410 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 import VideoPlayer from './components/VideoPlayer';
 
-const STORAGE_KEY = 'cinenext_videos';
-const STORAGE_SELECTED_KEY = 'cinenext_selected_video_id';
-const STORAGE_DRAFT_TITLE_KEY = 'cinenext_draft_title';
-const STORAGE_DRAFT_PLAYBACK_KEY = 'cinenext_draft_playback_id';
-const STORAGE_INTERACTION_KEY = 'cinenext_video_interactions';
+const STORAGE_KEYS = {
+  searchHistory: 'cinenext_search_history',
+  watchHistory: 'cinenext_watch_history',
+  watchlist: 'cinenext_watchlist',
+  interactions: 'cinenext_interactions',
+  mutedMap: 'cinenext_muted_map',
+  legacyVideos: 'cinenext_videos',
+};
 
-const safeStorageGet = (key, fallback = '') => {
+const HOT_KEYWORDS = ['短剧', '逆袭', '豪门', '重生', '甜宠'];
+
+const safeGet = (key, fallback) => {
   try {
-    const value = window.localStorage.getItem(key);
-    return value ?? fallback;
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      return fallback;
+    }
+    return JSON.parse(raw);
   } catch {
     return fallback;
   }
 };
 
-const safeStorageSet = (key, value) => {
+const safeSet = (key, value) => {
   try {
-    window.localStorage.setItem(key, value);
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // ignore storage failures in restricted WebViews
+    // ignore
   }
 };
 
-const safeStorageRemove = (key) => {
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // ignore storage failures in restricted WebViews
-  }
-};
+const getTelegramWebApp = () => window.Telegram?.WebApp || null;
 
-const getTelegramWebApp = () => {
-  const tg = window.Telegram?.WebApp;
-  if (!tg) {
+const toText = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
+
+const toPlaybackUrl = (playbackId) => `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
+const toCoverUrl = (playbackId) => `https://livepeer.studio/thumbnail/${playbackId}.png`;
+
+const normalizeAsset = (asset, index) => {
+  const playbackId = toText(asset?.playbackId || asset?.playback_id);
+  if (!playbackId) {
     return null;
   }
 
-  const hasInitData = typeof tg.initData === 'string' && tg.initData.length > 0;
-  const isTelegramUA = /Telegram/i.test(window.navigator.userAgent || '');
-  return hasInitData || isTelegramUA ? tg : null;
+  const metadata = typeof asset?.meta === 'object' && asset?.meta
+    ? asset.meta
+    : typeof asset?.metadata === 'object' && asset?.metadata
+      ? asset.metadata
+      : {};
+
+  const episode = metadata.episode || metadata.currentEpisode || index + 1;
+  const nftCollectionAddress = metadata.nftCollectionAddress || metadata.collectionAddress || '';
+  const unlockType = nftCollectionAddress ? 'nft' : 'free';
+  const price = metadata.price || metadata.unlockPrice || '0.5';
+  const actorList = Array.isArray(metadata.actors)
+    ? metadata.actors
+    : typeof metadata.actors === 'string' && metadata.actors
+      ? metadata.actors.split(',').map((actor) => actor.trim()).filter(Boolean)
+      : [];
+
+  const keywordList = Array.isArray(metadata.keywords)
+    ? metadata.keywords
+    : typeof metadata.keywords === 'string' && metadata.keywords
+      ? metadata.keywords.split(',').map((keyword) => keyword.trim()).filter(Boolean)
+      : [];
+
+  return {
+    id: String(asset?.id || playbackId),
+    playbackId,
+    playbackUrl: toPlaybackUrl(playbackId),
+    coverUrl: toCoverUrl(playbackId),
+    title: toText(asset?.name || metadata.title, `短剧 ${index + 1}`),
+    episode: Number(episode) || index + 1,
+    likes: Number(metadata.likes || Math.floor(2000 + Math.random() * 9000)),
+    views: Number(metadata.views || Math.floor(30000 + Math.random() * 300000)),
+    actors: actorList,
+    keywords: keywordList,
+    unlockType,
+    nftCollectionAddress,
+    price,
+  };
 };
 
-const extractPlaybackId = (rawInput) => {
-  const input = rawInput.trim();
-  if (!input) {
-    return '';
+const normalizeLegacyVideo = (video, index) => {
+  const playbackId = toText(video?.playbackId);
+  if (!playbackId) {
+    return null;
   }
 
-  if (/^[a-zA-Z0-9_-]+$/.test(input)) {
-    return input;
+  return {
+    id: String(video?.id || `legacy-${playbackId}`),
+    playbackId,
+    playbackUrl: toText(video?.playbackUrl, toPlaybackUrl(playbackId)),
+    coverUrl: toCoverUrl(playbackId),
+    title: toText(video?.title, `短剧 ${index + 1}`),
+    episode: index + 1,
+    likes: 1000 + index * 87,
+    views: 10000 + index * 529,
+    actors: [],
+    keywords: [],
+    unlockType: 'free',
+    nftCollectionAddress: '',
+    price: '0.5',
+  };
+};
+
+const formatCount = (value) => {
+  if (value >= 10000) {
+    return `${(value / 10000).toFixed(1)}w`;
   }
-
-  try {
-    const parsedUrl = new URL(input);
-    const queryPlaybackId =
-      parsedUrl.searchParams.get('playbackId') ||
-      parsedUrl.searchParams.get('playback_id') ||
-      parsedUrl.searchParams.get('playbackid');
-
-    if (queryPlaybackId) {
-      return queryPlaybackId;
-    }
-
-    const segments = parsedUrl.pathname.split('/').filter(Boolean);
-    const hlsIndex = segments.indexOf('hls');
-    if (hlsIndex >= 0 && segments[hlsIndex + 1]) {
-      return segments[hlsIndex + 1];
-    }
-
-    const webrtcIndex = segments.indexOf('webrtc');
-    if (webrtcIndex >= 0 && segments[webrtcIndex + 1]) {
-      return segments[webrtcIndex + 1];
-    }
-  } catch {
-    return '';
-  }
-
-  return '';
+  return String(value);
 };
 
 function App() {
+  const [tonConnectUI] = useTonConnectUI();
+  const wallet = useTonWallet();
+
+  const [page, setPage] = useState('home');
   const [videos, setVideos] = useState([]);
-  const [selectedVideo, setSelectedVideo] = useState(null);
-  const [videoTitle, setVideoTitle] = useState(() => safeStorageGet(STORAGE_DRAFT_TITLE_KEY, ''));
-  const [videoPlaybackId, setVideoPlaybackId] = useState(() => safeStorageGet(STORAGE_DRAFT_PLAYBACK_KEY, ''));
-  const [interactions, setInteractions] = useState(() => {
-    try {
-      const saved = safeStorageGet(STORAGE_INTERACTION_KEY, '{}');
-      const parsed = JSON.parse(saved);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  });
-  const [sourceError, setSourceError] = useState('');
-  const [sourceHint, setSourceHint] = useState('');
-  const [playerError, setPlayerError] = useState('');
-  const [isAddingVideo, setIsAddingVideo] = useState(false);
-  const [tgUser, setTgUser] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchHistory, setSearchHistory] = useState(() => safeGet(STORAGE_KEYS.searchHistory, []));
+  const [watchlist, setWatchlist] = useState(() => safeGet(STORAGE_KEYS.watchlist, []));
+  const [interactions, setInteractions] = useState(() => safeGet(STORAGE_KEYS.interactions, {}));
+  const [mutedMap, setMutedMap] = useState(() => safeGet(STORAGE_KEYS.mutedMap, {}));
+  const [accessMap, setAccessMap] = useState({});
+
+  const [unlockingId, setUnlockingId] = useState('');
+
+  const feedRef = useRef(null);
+  const pendingScrollIndexRef = useRef(null);
+
+  const activeVideo = videos[activeIndex] || null;
 
   useEffect(() => {
-    try {
-      const savedVideos = safeStorageGet(STORAGE_KEY, '');
-      const savedSelectedId = safeStorageGet(STORAGE_SELECTED_KEY, '');
-
-      if (savedVideos) {
-        const parsedVideos = JSON.parse(savedVideos);
-        if (Array.isArray(parsedVideos)) {
-          setVideos(parsedVideos);
-
-          if (savedSelectedId) {
-            const matchedVideo = parsedVideos.find((video) => String(video.id) === savedSelectedId);
-            if (matchedVideo) {
-              setSelectedVideo(matchedVideo);
-            }
-          }
-        }
-      }
-    } catch {
-      safeStorageRemove(STORAGE_KEY);
-      safeStorageRemove(STORAGE_SELECTED_KEY);
-    }
-  }, []);
+    safeSet(STORAGE_KEYS.searchHistory, searchHistory.slice(0, 5));
+  }, [searchHistory]);
 
   useEffect(() => {
-    try {
-      safeStorageSet(STORAGE_KEY, JSON.stringify(videos));
-      if (selectedVideo?.id) {
-        safeStorageSet(STORAGE_SELECTED_KEY, String(selectedVideo.id));
-      }
-    } catch {
-      // 忽略本地存储异常
-    }
-  }, [videos, selectedVideo]);
+    safeSet(STORAGE_KEYS.watchlist, watchlist);
+  }, [watchlist]);
 
   useEffect(() => {
-    try {
-      safeStorageSet(STORAGE_DRAFT_TITLE_KEY, videoTitle);
-      safeStorageSet(STORAGE_DRAFT_PLAYBACK_KEY, videoPlaybackId);
-    } catch {
-      // 忽略本地存储异常
-    }
-  }, [videoTitle, videoPlaybackId]);
-
-  useEffect(() => {
-    try {
-      safeStorageSet(STORAGE_INTERACTION_KEY, JSON.stringify(interactions));
-    } catch {
-      // 忽略本地存储异常
-    }
+    safeSet(STORAGE_KEYS.interactions, interactions);
   }, [interactions]);
 
   useEffect(() => {
-    // 初始化 Telegram Web App
-    const tg = getTelegramWebApp();
-    if (tg) {
-      
-      // 扩展应用到全屏
-      tg.expand();
-      
-      // 获取用户信息
-      if (tg.initDataUnsafe?.user) {
-        setTgUser(tg.initDataUnsafe.user);
-      }
+    safeSet(STORAGE_KEYS.mutedMap, mutedMap);
+  }, [mutedMap]);
 
-      // 设置主按钮（可选）
-      tg.MainButton.setText('分享视频');
-      tg.MainButton.onClick(() => {
-        if (selectedVideo) {
-          tg.showAlert(`分享视频: ${selectedVideo.title}`);
-        }
-      });
+  useEffect(() => {
+    const history = safeGet(STORAGE_KEYS.watchHistory, []);
+    const next = [
+      {
+        videoId: activeVideo?.id,
+        timestamp: Date.now(),
+      },
+      ...history.filter((item) => item.videoId !== activeVideo?.id),
+    ].slice(0, 30);
+
+    if (activeVideo?.id) {
+      safeSet(STORAGE_KEYS.watchHistory, next);
+    }
+  }, [activeVideo?.id]);
+
+  useEffect(() => {
+    const tg = getTelegramWebApp();
+    if (!tg) {
+      return;
+    }
+
+    tg.ready();
+    tg.expand();
+
+    const theme = tg.themeParams || {};
+    const root = document.documentElement;
+    if (theme.bg_color) {
+      root.style.setProperty('--tg-theme-bg-color', theme.bg_color);
+    }
+    if (theme.text_color) {
+      root.style.setProperty('--tg-theme-text-color', theme.text_color);
+    }
+    if (theme.hint_color) {
+      root.style.setProperty('--tg-theme-hint-color', theme.hint_color);
+    }
+    if (theme.button_color) {
+      root.style.setProperty('--tg-theme-button-color', theme.button_color);
+    }
+    if (theme.button_text_color) {
+      root.style.setProperty('--tg-theme-button-text-color', theme.button_text_color);
     }
   }, []);
 
   useEffect(() => {
     const tg = getTelegramWebApp();
-    if (tg) {
-      if (selectedVideo) {
-        tg.MainButton.show();
-      } else {
-        tg.MainButton.hide();
-      }
+    if (!tg?.BackButton) {
+      return;
     }
 
-    if (!selectedVideo && videos.length > 0) {
-      setSelectedVideo(videos[0]);
-    }
-  }, [selectedVideo, videos]);
+    const onBack = () => setPage('home');
+    tg.BackButton.onClick(onBack);
 
-  const handleVideoSelect = (video) => {
-    setSelectedVideo(video);
-    setPlayerError('');
-    
-    // 提供触觉反馈（Telegram Mini App 特性）
-    const tg = getTelegramWebApp();
-    if (tg?.HapticFeedback) {
-      tg.HapticFeedback.impactOccurred('light');
+    if (page === 'search') {
+      tg.BackButton.show();
+    } else {
+      tg.BackButton.hide();
     }
+
+    return () => {
+      tg.BackButton.offClick(onBack);
+    };
+  }, [page]);
+
+  const fetchLivepeerAssets = async () => {
+    const apiKey = import.meta.env.VITE_LIVEPEER_API_KEY;
+    if (!apiKey) {
+      return [];
+    }
+
+    const response = await fetch('https://livepeer.studio/api/asset?limit=60', {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('获取 Livepeer 资源失败');
+    }
+
+    const data = await response.json();
+    const list = Array.isArray(data) ? data : data?.assets || [];
+    return list.map(normalizeAsset).filter(Boolean);
   };
 
-  const resolvePlaybackUrl = async (playbackId) => {
-    const fallbackUrl = `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
+  useEffect(() => {
+    let cancelled = false;
 
-    const resolveFromPlaybackApi = async () => {
+    const loadVideos = async () => {
+      setLoading(true);
+      setLoadError('');
+
       try {
-        const playbackResponse = await fetch(`https://livepeer.studio/api/playback/${encodeURIComponent(playbackId)}`);
-        if (!playbackResponse.ok) {
-          return null;
+        const remoteVideos = await fetchLivepeerAssets();
+        const legacyVideos = safeGet(STORAGE_KEYS.legacyVideos, [])
+          .map(normalizeLegacyVideo)
+          .filter(Boolean);
+
+        const mergedMap = new Map();
+        [...remoteVideos, ...legacyVideos].forEach((video) => {
+          if (!mergedMap.has(video.playbackId)) {
+            mergedMap.set(video.playbackId, video);
+          }
+        });
+
+        const nextVideos = [...mergedMap.values()];
+
+        if (!cancelled) {
+          setVideos(nextVideos);
+          setActiveIndex(0);
+          if (nextVideos.length === 0) {
+            setLoadError('暂无可播放内容，请配置 Livepeer API Key 或先添加资源。');
+          }
         }
-
-        const playbackData = await playbackResponse.json();
-        const hlsSource = playbackData?.meta?.source?.find(
-          (source) => source?.type === 'html5/application/vnd.apple.mpegurl' && typeof source?.url === 'string'
-        );
-
-        return hlsSource?.url || null;
-      } catch {
-        return null;
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : '加载视频失败');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
+
+    loadVideos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const checkNftAccess = async (video, address) => {
+    if (!video?.nftCollectionAddress) {
+      return true;
+    }
+
+    if (!address) {
+      return false;
+    }
 
     try {
-      const response = await fetch(`/api/playback-url?playbackId=${encodeURIComponent(playbackId)}`);
-      if (!response.ok) {
-        const publicUrl = await resolveFromPlaybackApi();
-        return {
-          playbackUrl: publicUrl || fallbackUrl,
-          isSigned: false,
-        };
-      }
+      const apiKey = import.meta.env.VITE_TONCENTER_API_KEY;
+      const endpoint = new URL('https://toncenter.com/api/v3/nft/items');
+      endpoint.searchParams.set('owner_address', address);
+      endpoint.searchParams.set('collection_address', video.nftCollectionAddress);
+      endpoint.searchParams.set('limit', '1');
 
-      const data = await response.json();
-      if (typeof data.playbackUrl === 'string' && data.playbackUrl.length > 0) {
-        return {
-          playbackUrl: data.playbackUrl,
-          isSigned: true,
-        };
-      }
-    } catch {
-      const publicUrl = await resolveFromPlaybackApi();
-      return {
-        playbackUrl: publicUrl || fallbackUrl,
-        isSigned: false,
-      };
-    }
-
-    const publicUrl = await resolveFromPlaybackApi();
-    return {
-      playbackUrl: publicUrl || fallbackUrl,
-      isSigned: false,
-    };
-  };
-
-  const handleAddVideo = async () => {
-
-    const playbackId = extractPlaybackId(videoPlaybackId);
-    const title = videoTitle.trim();
-    if (!playbackId) {
-      setSourceError('请输入有效的 playbackId，或粘贴包含 playbackId 的 Livepeer 播放链接。');
-      setSourceHint('');
-      return;
-    }
-
-    const duplicated = videos.some((video) => video.playbackId === playbackId);
-    if (duplicated) {
-      setSourceError('这个 playbackId 已添加过了。');
-      setSourceHint('');
-      return;
-    }
-
-    const tempId = Date.now();
-    const defaultUrl = `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
-    const newVideo = {
-      id: tempId,
-      title: title || `视频 ${videos.length + 1}`,
-      description: `正在解析视频源 · ${playbackId}`,
-      playbackId,
-      playbackUrl: defaultUrl,
-    };
-
-    setSourceError('');
-    setSourceHint('已添加到列表，正在解析可播放地址...');
-    setPlayerError('');
-    setVideos((prevVideos) => [newVideo, ...prevVideos]);
-    setSelectedVideo(newVideo);
-    setVideoPlaybackId('');
-    setVideoTitle('');
-    safeStorageRemove(STORAGE_DRAFT_TITLE_KEY);
-    safeStorageRemove(STORAGE_DRAFT_PLAYBACK_KEY);
-
-    setIsAddingVideo(true);
-    try {
-      const { playbackUrl, isSigned } = await resolvePlaybackUrl(playbackId);
-
-      setVideos((prevVideos) =>
-        prevVideos.map((video) =>
-          video.id === tempId
-            ? {
-                ...video,
-                playbackUrl,
-                description: isSigned
-                  ? `私有视频源 · ${playbackId}`
-                  : `公开视频源 · ${playbackId}`,
-              }
-            : video
-        )
-      );
-      setSelectedVideo((previous) =>
-        previous?.id === tempId
+      const response = await fetch(endpoint.toString(), {
+        headers: apiKey
           ? {
-              ...previous,
-              playbackUrl,
-              description: isSigned
-                ? `私有视频源 · ${playbackId}`
-                : `公开视频源 · ${playbackId}`,
+              'X-API-Key': apiKey,
             }
-          : previous
-      );
+          : undefined,
+      });
 
-      if (isSigned) {
-        setSourceHint('已获取签名播放地址，正在播放私有视频。');
-      } else {
-        setSourceHint('已切换到公开视频播放地址。');
+      if (!response.ok) {
+        return false;
       }
-    } finally {
-      setIsAddingVideo(false);
+
+      const payload = await response.json();
+      const items = Array.isArray(payload?.nft_items)
+        ? payload.nft_items
+        : Array.isArray(payload?.items)
+          ? payload.items
+          : [];
+      return items.length > 0;
+    } catch {
+      return false;
     }
   };
 
-  const handlePlaybackIdKeyDown = (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      handleAddVideo();
-    }
-  };
+  useEffect(() => {
+    let cancelled = false;
 
-  const getInteractionByVideoId = (videoId) => {
-    const entry = interactions[String(videoId)];
-    return {
-      likes: Number(entry?.likes || 0),
-      comments: Number(entry?.comments || 0),
-      shares: Number(entry?.shares || 0),
-      liked: Boolean(entry?.liked),
+    const validateAccess = async () => {
+      const address = wallet?.account?.address;
+      const lockedVideos = videos.filter((video) => video.unlockType === 'nft');
+
+      if (lockedVideos.length === 0) {
+        return;
+      }
+
+      const updates = {};
+      for (const video of lockedVideos) {
+        updates[video.id] = await checkNftAccess(video, address);
+      }
+
+      if (!cancelled) {
+        setAccessMap((prev) => ({ ...prev, ...updates }));
+      }
     };
-  };
+
+    validateAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [videos, wallet?.account?.address]);
+
+  const homeSearchResults = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    if (!keyword) {
+      return [];
+    }
+
+    return videos.filter((video) => {
+      const actor = video.actors.join(' ').toLowerCase();
+      const tags = video.keywords.join(' ').toLowerCase();
+      return (
+        video.title.toLowerCase().includes(keyword) ||
+        actor.includes(keyword) ||
+        tags.includes(keyword)
+      );
+    });
+  }, [videos, searchQuery]);
+
+  const searchSuggestions = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    if (!keyword) {
+      return [];
+    }
+
+    return videos
+      .filter((video) => video.title.toLowerCase().includes(keyword))
+      .slice(0, 6)
+      .map((video) => video.title);
+  }, [videos, searchQuery]);
 
   const updateInteraction = (videoId, updater) => {
-    const key = String(videoId);
     setInteractions((prev) => {
-      const current = {
-        likes: Number(prev[key]?.likes || 0),
-        comments: Number(prev[key]?.comments || 0),
-        shares: Number(prev[key]?.shares || 0),
-        liked: Boolean(prev[key]?.liked),
-      };
+      const current = prev[videoId] || { liked: false, likes: 0, comments: 0, shares: 0 };
       return {
         ...prev,
-        [key]: updater(current),
+        [videoId]: updater(current),
       };
     });
   };
 
-  const handleLike = () => {
-    if (!selectedVideo?.id) {
-      return;
-    }
+  const getInteraction = (video) => {
+    const current = interactions[video.id] || { liked: false, likes: 0, comments: 0, shares: 0 };
+    return {
+      liked: current.liked,
+      likes: video.likes + current.likes,
+      comments: current.comments,
+      shares: current.shares,
+    };
+  };
 
-    updateInteraction(selectedVideo.id, (current) => {
+  const toggleLike = (video) => {
+    updateInteraction(video.id, (current) => {
       if (current.liked) {
         return {
           ...current,
@@ -377,179 +412,314 @@ function App() {
           likes: Math.max(0, current.likes - 1),
         };
       }
-
       return {
         ...current,
         liked: true,
         likes: current.likes + 1,
       };
     });
-
-    const tg = getTelegramWebApp();
-    tg?.HapticFeedback?.impactOccurred('light');
   };
 
-  const handleComment = () => {
-    if (!selectedVideo?.id) {
+  const openComment = (video) => {
+    const comment = window.prompt(`给《${video.title}》写条评论`);
+    if (!comment || !comment.trim()) {
       return;
     }
 
-    const commentText = window.prompt('输入评论内容');
-    if (!commentText || !commentText.trim()) {
-      return;
-    }
-
-    updateInteraction(selectedVideo.id, (current) => ({
+    updateInteraction(video.id, (current) => ({
       ...current,
       comments: current.comments + 1,
     }));
-
-    const tg = getTelegramWebApp();
-    if (tg) {
-      tg.showAlert('评论已发送');
-      tg.HapticFeedback?.notificationOccurred('success');
-    }
   };
 
-  const handleShare = async () => {
-    if (!selectedVideo?.id) {
-      return;
-    }
-
-    const shareText = `正在看：${selectedVideo.title}`;
-    const shareUrl = selectedVideo.playbackUrl;
+  const shareVideo = async (video) => {
+    const shareText = `正在看：${video.title} 第${video.episode}集`;
+    const shareUrl = `${window.location.origin}${window.location.pathname}#playback=${video.playbackId}`;
 
     try {
-      if (navigator.share) {
+      const tg = getTelegramWebApp();
+      if (tg?.openTelegramLink) {
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`);
+      } else if (navigator.share) {
         await navigator.share({
-          title: selectedVideo.title,
+          title: video.title,
           text: shareText,
           url: shareUrl,
         });
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        window.alert('播放链接已复制');
       } else {
-        window.prompt('复制播放链接', shareUrl);
+        await navigator.clipboard.writeText(shareUrl);
       }
 
-      updateInteraction(selectedVideo.id, (current) => ({
+      updateInteraction(video.id, (current) => ({
         ...current,
         shares: current.shares + 1,
       }));
-
-      const tg = getTelegramWebApp();
-      tg?.HapticFeedback?.notificationOccurred('success');
     } catch {
-      // 用户主动取消分享时静默处理
+      // ignore canceled share
     }
   };
 
-  const currentInteraction = selectedVideo?.id
-    ? getInteractionByVideoId(selectedVideo.id)
-    : { likes: 0, comments: 0, shares: 0, liked: false };
+  const toggleWatchlist = (video) => {
+    setWatchlist((prev) =>
+      prev.includes(video.id)
+        ? prev.filter((id) => id !== video.id)
+        : [video.id, ...prev]
+    );
+  };
 
-  return (
-    <div className="app-shell">
-      {selectedVideo ? (
-        <section className="short-player-screen">
-          <div className="short-player-video">
-            <VideoPlayer
-              playbackId={selectedVideo.playbackId}
-              playbackUrl={selectedVideo.playbackUrl}
-            />
-          </div>
+  const onFeedScroll = () => {
+    if (!feedRef.current || videos.length === 0) {
+      return;
+    }
 
-          <div className="short-player-overlay" />
+    const { scrollTop, clientHeight } = feedRef.current;
+    const nextIndex = Math.round(scrollTop / clientHeight);
+    const safeIndex = Math.min(videos.length - 1, Math.max(0, nextIndex));
+    setActiveIndex(safeIndex);
+  };
 
-          <div className="short-player-meta">
-            <h1>{selectedVideo.title}</h1>
-            <p>{selectedVideo.description}</p>
-            {tgUser && <span>@{tgUser.username || tgUser.first_name}</span>}
-          </div>
+  const navigateToHomeVideo = (videoId, keyword = '') => {
+    const idx = videos.findIndex((video) => video.id === videoId);
+    if (idx < 0) {
+      return;
+    }
 
-          <div className="short-player-actions">
-            <button
-              className={`action-btn ${currentInteraction.liked ? 'active' : ''}`}
-              type="button"
-              onClick={handleLike}
-            >
-              <strong>❤</strong>
-              <span>{currentInteraction.likes}</span>
-            </button>
+    if (keyword.trim()) {
+      setSearchHistory((prev) => [keyword.trim(), ...prev.filter((item) => item !== keyword.trim())].slice(0, 5));
+    }
 
-            <button className="action-btn" type="button" onClick={handleComment}>
-              <strong>💬</strong>
-              <span>{currentInteraction.comments}</span>
-            </button>
+    setPage('home');
+    setActiveIndex(idx);
+    pendingScrollIndexRef.current = idx;
+  };
 
-            <button className="action-btn" type="button" onClick={handleShare}>
-              <strong>↗</strong>
-              <span>{currentInteraction.shares}</span>
-            </button>
-          </div>
+  useEffect(() => {
+    if (page !== 'home' || pendingScrollIndexRef.current === null || !feedRef.current) {
+      return;
+    }
 
-          {playerError && <div className="error floating-error">{playerError}</div>}
-        </section>
-      ) : (
-        <div className="loading short-empty">先添加一个 playbackId 开始播放</div>
-      )}
+    const idx = pendingScrollIndexRef.current;
+    feedRef.current.scrollTo({
+      top: feedRef.current.clientHeight * idx,
+      behavior: 'smooth',
+    });
+    pendingScrollIndexRef.current = null;
+  }, [page]);
 
-      <div className="control-panel">
-        <div className="header">
-          <h2>短剧管理</h2>
-          {tgUser && <p>欢迎, {tgUser.first_name}!</p>}
+  const openSearch = () => {
+    setPage('search');
+    setSearchQuery('');
+  };
+
+  const requestUnlock = async (video) => {
+    if (!wallet) {
+      tonConnectUI.openModal();
+      return;
+    }
+
+    const target = import.meta.env.VITE_UNLOCK_CONTRACT || video.nftCollectionAddress;
+    if (!target) {
+      return;
+    }
+
+    const amountTon = Number(video.price || 0.5);
+    const amount = String(BigInt(Math.floor(amountTon * 1e9)));
+
+    try {
+      setUnlockingId(video.id);
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 600,
+        messages: [
+          {
+            address: target,
+            amount,
+          },
+        ],
+      });
+
+      const hasAccess = await checkNftAccess(video, wallet?.account?.address);
+      setAccessMap((prev) => ({
+        ...prev,
+        [video.id]: hasAccess,
+      }));
+    } catch {
+      // ignore canceled tx
+    } finally {
+      setUnlockingId('');
+    }
+  };
+
+  const renderHome = () => {
+    if (loading) {
+      return <div className="state-view">加载中...</div>;
+    }
+
+    if (videos.length === 0) {
+      return (
+        <div className="state-view">
+          <p>{loadError || '暂无视频内容'}</p>
         </div>
+      );
+    }
 
-        <div className="source-form">
+    return (
+      <>
+        <header className="home-topbar">
+          <div className="logo">CineNext</div>
+          <div className="topbar-actions">
+            <button type="button" className="wallet-btn" onClick={() => tonConnectUI.openModal()}>
+              {wallet ? '钱包已连接' : '连接钱包'}
+            </button>
+            <button type="button" className="icon-btn" onClick={openSearch} aria-label="搜索">
+              🔍
+            </button>
+          </div>
+        </header>
+
+        <div className="feed-scroll" ref={feedRef} onScroll={onFeedScroll}>
+          {videos.map((video, index) => {
+            const interaction = getInteraction(video);
+            const blocked = video.unlockType === 'nft' && !accessMap[video.id];
+            const lockLabel = wallet
+              ? `需 NFT 解锁 · ${video.price} TON`
+              : '连接钱包后解锁观看';
+
+            return (
+              <section key={video.id} className="feed-item">
+                <VideoPlayer
+                  sourceUrl={video.playbackUrl}
+                  poster={video.coverUrl}
+                  title={video.title}
+                  active={index === activeIndex}
+                  preload={Math.abs(index - activeIndex) <= 3}
+                  initialMuted={mutedMap[video.id] ?? true}
+                  blocked={blocked}
+                  lockLabel={unlockingId === video.id ? '解锁处理中...' : lockLabel}
+                  onUnlock={() => requestUnlock(video)}
+                  onMuteChange={(muted) =>
+                    setMutedMap((prev) => ({
+                      ...prev,
+                      [video.id]: muted,
+                    }))
+                  }
+                />
+
+                <div className="video-meta">
+                  <h2>{video.title}</h2>
+                  <p>第 {video.episode} 集</p>
+                  <div className="meta-tags">
+                    <span>热度 {formatCount(video.views)}</span>
+                    <span>点赞 {formatCount(interaction.likes)}</span>
+                    <span className={video.unlockType === 'nft' ? 'tag-lock' : 'tag-free'}>
+                      {video.unlockType === 'nft' ? '需 NFT 解锁' : '免费'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="video-actions" onClick={(event) => event.stopPropagation()}>
+                  <button type="button" onClick={() => toggleLike(video)} className={interaction.liked ? 'active' : ''}>
+                    ❤ {formatCount(interaction.likes)}
+                  </button>
+                  <button type="button" onClick={() => openComment(video)}>
+                    💬 {formatCount(interaction.comments)}
+                  </button>
+                  <button type="button" onClick={() => shareVideo(video)}>
+                    ↗ {formatCount(interaction.shares)}
+                  </button>
+                  <button type="button" onClick={() => toggleWatchlist(video)}>
+                    {watchlist.includes(video.id) ? '★ 已追' : '☆ 追剧'}
+                  </button>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  const renderSearch = () => {
+    return (
+      <section className="search-page">
+        <div className="search-header">
           <input
-            className="source-input"
-            placeholder="输入视频标题（可选）"
-            value={videoTitle}
-            onChange={(event) => setVideoTitle(event.target.value)}
+            className="search-input"
+            placeholder="搜索剧名 / 演员 / 关键词"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
           />
-          <input
-            className="source-input"
-            placeholder="输入 playbackId，或粘贴播放链接（必填）"
-            value={videoPlaybackId}
-            onChange={(event) => setVideoPlaybackId(event.target.value)}
-            onKeyDown={handlePlaybackIdKeyDown}
-          />
-          <button
-            className="source-button"
-            type="button"
-            disabled={isAddingVideo}
-            onClick={handleAddVideo}
-          >
-            {isAddingVideo ? '正在添加...' : '添加视频源'}
+          <button type="button" className="cancel-btn" onClick={() => setPage('home')}>
+            取消
           </button>
-          {sourceError && <p className="source-error">{sourceError}</p>}
-          {sourceHint && <p className="source-hint">{sourceHint}</p>}
-          {(videoTitle || videoPlaybackId) && (
-            <p className="source-hint">已开启草稿保存，页面刷新后会自动恢复输入内容。</p>
-          )}
         </div>
 
-        <div className="video-list">
-          <h3>视频列表</h3>
-          {videos.length === 0 ? (
-            <div className="loading">暂无视频源，请先添加 playbackId</div>
-          ) : (
-            videos.map((video) => (
-              <div
-                key={video.id}
-                className={`video-item ${selectedVideo?.id === video.id ? 'active' : ''}`}
-                onClick={() => handleVideoSelect(video)}
-              >
-                <h3>{video.title}</h3>
-                <p>{video.description}</p>
+        {searchQuery.trim() && searchSuggestions.length > 0 && (
+          <div className="suggestions">
+            {searchSuggestions.map((word) => (
+              <button key={word} type="button" onClick={() => setSearchQuery(word)}>
+                {word}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!searchQuery.trim() && (
+          <>
+            <div className="search-block">
+              <div className="block-title">
+                <h3>搜索历史</h3>
+                <button type="button" onClick={() => setSearchHistory([])}>清空</button>
               </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
+              <div className="chips">
+                {searchHistory.length === 0 ? (
+                  <p className="empty-note">暂无搜索历史</p>
+                ) : (
+                  searchHistory.map((word) => (
+                    <button key={word} type="button" onClick={() => setSearchQuery(word)}>{word}</button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="search-block">
+              <h3>热门搜索</h3>
+              <div className="chips">
+                {HOT_KEYWORDS.map((word) => (
+                  <button key={word} type="button" onClick={() => setSearchQuery(word)}>{word}</button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {searchQuery.trim() && (
+          <div className="result-grid">
+            {homeSearchResults.length === 0 ? (
+              <div className="empty-note">未找到相关短剧</div>
+            ) : (
+              homeSearchResults.map((video) => (
+                <button
+                  key={video.id}
+                  type="button"
+                  className="result-card"
+                  onClick={() => navigateToHomeVideo(video.id, searchQuery)}
+                >
+                  <img src={video.coverUrl} alt={video.title} loading="lazy" />
+                  <div className="result-meta">
+                    <h4>{video.title}</h4>
+                    <p>{video.actors[0] || '主演待更新'}</p>
+                    <span>热度 {formatCount(video.views)}</span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  return <div className="app-root">{page === 'home' ? renderHome() : renderSearch()}</div>;
 }
 
 export default App;

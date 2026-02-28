@@ -1,44 +1,57 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import '../player.css';
 
-const VideoPlayer = ({ playbackId, playbackUrl }) => {
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [isPaused, setIsPaused] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [showSpeedSheet, setShowSpeedSheet] = useState(false);
-  const playerContainerRef = useRef(null);
+const LONG_PRESS_MS = 450;
+
+const VideoPlayer = ({
+  sourceUrl,
+  poster,
+  title,
+  active,
+  preload,
+  initialMuted,
+  blocked,
+  lockLabel,
+  onUnlock,
+  onMuteChange,
+  onPlaybackState,
+}) => {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const longPressTimerRef = useRef(null);
-  const longPressTriggeredRef = useRef(false);
+  const singleTapTimerRef = useRef(null);
 
-  const sourceUrl = useMemo(
-    () => playbackUrl || `https://livepeercdn.com/hls/${playbackId}/index.m3u8`,
-    [playbackId, playbackUrl]
-  );
+  const [isPaused, setIsPaused] = useState(false);
+  const [isMuted, setIsMuted] = useState(initialMuted);
+  const [showSpeedSheet, setShowSpeedSheet] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
 
   useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement || !sourceUrl) {
+    setIsMuted(initialMuted);
+  }, [initialMuted]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !sourceUrl || !preload) {
       return;
     }
 
-    videoElement.loop = true;
-    videoElement.defaultMuted = false;
-    videoElement.muted = false;
-    videoElement.volume = 1;
-    videoElement.playsInline = true;
-    videoElement.playbackRate = playbackRate;
+    video.loop = true;
+    video.playsInline = true;
+    video.defaultMuted = isMuted;
+    video.muted = isMuted;
+    video.playbackRate = playbackRate;
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
-    if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-      videoElement.src = sourceUrl;
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = sourceUrl;
     } else if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
@@ -46,170 +59,240 @@ const VideoPlayer = ({ playbackId, playbackUrl }) => {
       });
       hlsRef.current = hls;
       hls.loadSource(sourceUrl);
-      hls.attachMedia(videoElement);
+      hls.attachMedia(video);
     } else {
-      videoElement.src = sourceUrl;
+      video.src = sourceUrl;
     }
 
-    const tryPlay = () => {
-      const playPromise = videoElement.play();
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [sourceUrl, preload, playbackRate, isMuted]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    if (!active || blocked) {
+      video.pause();
+      setIsPaused(true);
+      return;
+    }
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {
+        setIsPaused(true);
+      });
+    }
+  }, [active, blocked]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const handleLoadedMetadata = () => {
+      setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+      setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
+    };
+    const handleTimeUpdate = () => {
+      setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
+    };
+    const handlePlay = () => {
+      setIsPaused(false);
+      onPlaybackState?.(true);
+    };
+    const handlePause = () => {
+      setIsPaused(true);
+      onPlaybackState?.(false);
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+    };
+  }, [onPlaybackState]);
+
+  const togglePause = () => {
+    const video = videoRef.current;
+    if (!video || blocked) {
+      return;
+    }
+
+    if (video.paused) {
+      const playPromise = video.play();
       if (playPromise && typeof playPromise.catch === 'function') {
         playPromise.catch(() => {
           setIsPaused(true);
         });
       }
-    };
-
-    const handleLoadedMetadata = () => {
-      setDuration(Number.isFinite(videoElement.duration) ? videoElement.duration : 0);
-      setCurrentTime(Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0);
-      tryPlay();
-    };
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : 0);
-    };
-
-    const handlePlay = () => setIsPaused(false);
-    const handlePause = () => setIsPaused(true);
-
-    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
-    videoElement.addEventListener('timeupdate', handleTimeUpdate);
-    videoElement.addEventListener('play', handlePlay);
-    videoElement.addEventListener('pause', handlePause);
-
-    tryPlay();
-
-    return () => {
-      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      videoElement.removeEventListener('timeupdate', handleTimeUpdate);
-      videoElement.removeEventListener('play', handlePlay);
-      videoElement.removeEventListener('pause', handlePause);
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-      videoElement.removeAttribute('src');
-      videoElement.load();
-    };
-  }, [sourceUrl, playbackRate]);
-
-  if (!playbackId) {
-    return (
-      <div className="error">
-        错误: 未提供视频 ID
-      </div>
-    );
-  }
-
-  const togglePlayPause = () => {
-    const videoElement = videoRef.current;
-    if (!videoElement) {
-      return;
-    }
-
-    if (videoElement.paused) {
-      const playPromise = videoElement.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {
-          // 忽略自动播放策略导致的异常
-        });
-      }
     } else {
-      videoElement.pause();
+      video.pause();
     }
   };
 
-  const clearLongPressTimer = () => {
+  const toggleMuted = () => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    setIsMuted(nextMuted);
+    onMuteChange?.(nextMuted);
+  };
+
+  const clearLongPress = () => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
   };
 
-  const handlePressStart = () => {
-    clearLongPressTimer();
-    longPressTriggeredRef.current = false;
+  const handlePointerDown = () => {
+    clearLongPress();
     longPressTimerRef.current = setTimeout(() => {
-      longPressTriggeredRef.current = true;
       setShowSpeedSheet(true);
-    }, 450);
+    }, LONG_PRESS_MS);
   };
 
-  const handlePressEnd = () => {
-    clearLongPressTimer();
+  const handlePointerUp = () => {
+    clearLongPress();
   };
 
-  const handleContainerClick = () => {
-    if (longPressTriggeredRef.current) {
-      longPressTriggeredRef.current = false;
+  const handleTap = () => {
+    if (showSpeedSheet) {
+      setShowSpeedSheet(false);
       return;
     }
-    setShowSpeedSheet(false);
-    togglePlayPause();
+
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+      toggleMuted();
+      return;
+    }
+
+    singleTapTimerRef.current = setTimeout(() => {
+      togglePause();
+      singleTapTimerRef.current = null;
+    }, 230);
   };
 
-  const applySpeed = (rate) => {
+  const handleSeekChange = (event) => {
+    const video = videoRef.current;
+    if (!video || duration <= 0) {
+      return;
+    }
+
+    const nextTime = Number(event.target.value);
+    video.currentTime = nextTime;
+    setCurrentTime(nextTime);
+  };
+
+  const applyPlaybackRate = (rate) => {
+    const video = videoRef.current;
+    if (video) {
+      video.playbackRate = rate;
+    }
     setPlaybackRate(rate);
     setShowSpeedSheet(false);
   };
 
-  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
-
-  useEffect(() => () => clearLongPressTimer(), []);
+  useEffect(() => {
+    return () => {
+      clearLongPress();
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div
-      className="native-player-root"
-      ref={playerContainerRef}
-      onPointerDown={handlePressStart}
-      onPointerUp={handlePressEnd}
-      onPointerCancel={handlePressEnd}
-      onPointerLeave={handlePressEnd}
-      onClick={handleContainerClick}
+      className="video-player"
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      onClick={handleTap}
     >
-      <video
-        ref={videoRef}
-        className="native-player-video"
-        preload="auto"
-        playsInline
-      />
+      {preload ? (
+        <video
+          ref={videoRef}
+          className="video-element"
+          poster={poster}
+          preload={active ? 'auto' : 'metadata'}
+          aria-label={title}
+        />
+      ) : (
+        <img className="video-poster" src={poster} alt={title} loading="lazy" />
+      )}
+
+      {blocked && (
+        <div className="lock-overlay" onClick={(event) => event.stopPropagation()}>
+          <p>{lockLabel || '该内容需要解锁后观看'}</p>
+          <button type="button" onClick={onUnlock}>立即解锁</button>
+        </div>
+      )}
 
       <button
         type="button"
-        className={`center-play-btn ${isPaused ? 'visible' : ''}`}
+        className={`play-overlay ${isPaused ? 'visible' : ''}`}
         onClick={(event) => {
           event.stopPropagation();
-          togglePlayPause();
+          togglePause();
         }}
-        aria-label={isPaused ? '播放视频' : '暂停视频'}
+        aria-label={isPaused ? '播放' : '暂停'}
       >
         {isPaused ? '▶' : '❚❚'}
       </button>
 
-      <div className="video-progress-bar" aria-hidden="true">
-        <div className="video-progress-current" style={{ width: `${progressPercent}%` }} />
-      </div>
+      <div className="muted-indicator">{isMuted ? '静音' : '有声'}</div>
 
       {showSpeedSheet && (
-        <div
-          className="speed-sheet"
-          onClick={(event) => event.stopPropagation()}
-          role="dialog"
-          aria-label="倍速选择"
-        >
-          {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+        <div className="speed-sheet" onClick={(event) => event.stopPropagation()}>
+          {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
             <button
               key={rate}
               type="button"
-              className={`speed-sheet-btn ${playbackRate === rate ? 'active' : ''}`}
-              onClick={() => applySpeed(rate)}
+              className={playbackRate === rate ? 'active' : ''}
+              onClick={() => applyPlaybackRate(rate)}
             >
               {rate}x
             </button>
           ))}
         </div>
       )}
+
+      <div className="progress-wrap" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          value={Math.min(currentTime, duration || 0)}
+          step={0.01}
+          onChange={handleSeekChange}
+          className="progress-range"
+        />
+      </div>
     </div>
   );
 };
