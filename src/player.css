@@ -1,0 +1,171 @@
+/* Livepeer Player 样式 */
+[data-livepeer] {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+/* 视频容器 */
+[data-livepeer-container] {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+/* 视频元素 */
+[data-livepeer-video] {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 控制器 */
+[data-livepeer-controls] {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+[data-livepeer-container]:hover [data-livepeer-controls],
+[data-livepeer-controls]:focus-within {
+  opacity: 1;
+}
+
+/* 播放/暂停按钮 */
+[data-livepeer-play-pause-trigger] {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 时间显示 */
+[data-livepeer-time] {
+  color: white;
+  font-size: 14px;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+/* 进度条 */
+[data-livepeer-seek] {
+  flex: 1;
+  position: relative;
+  height: 4px;
+  cursor: pointer;
+}
+
+[data-livepeer-track] {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+[data-livepeer-seek-buffer] {
+  position: absolute;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.5);
+  left: 0;
+}
+
+[data-livepeer-range] {
+  position: absolute;
+  height: 100%;
+  background: var(--tg-theme-button-color, #3390ec);
+  left: 0;
+}
+
+[data-livepeer-thumb] {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 音量控制 */
+[data-livepeer-volume] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+[data-livepeer-volume-indicator] {
+  color: white;
+  cursor: pointer;
+  padding: 8px;
+}
+
+/* 全屏按钮 */
+[data-livepeer-fullscreen-trigger] {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 加载指示器 */
+[data-livepeer-loading-indicator] {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-size: 24px;
+}
+
+/* 错误指示器 */
+[data-livepeer-error-indicator] {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #ff3b30;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  max-width: 80%;
+}
+
+/* 按钮悬停效果 */
+button[data-livepeer-play-pause-trigger]:hover,
+button[data-livepeer-fullscreen-trigger]:hover {
+  opacity: 0.8;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  [data-livepeer-controls] {
+    gap: 4px;
+    padding: 8px;
+  }
+  
+  [data-livepeer-time] {
+    font-size: 12px;
+  }
+}
