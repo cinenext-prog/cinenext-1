@@ -22,6 +22,11 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+
       - name: Install dependencies
         run: npm install
 
@@ -31,6 +36,7 @@ jobs:
           VITE_LIVEPEER_API_KEY: ${{ secrets.LIVEPEER_API_KEY }}
 
       - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
