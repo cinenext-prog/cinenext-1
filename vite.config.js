@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  base: '/cinenext-1/',
+  // 本地开发使用 /，生产构建使用 /cinenext-1/
+  base: process.env.NODE_ENV === 'production' ? '/cinenext-1/' : '/',
   plugins: [react()],
   server: {
     host: '0.0.0.0',
