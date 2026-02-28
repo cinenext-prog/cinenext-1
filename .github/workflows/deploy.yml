@@ -12,13 +12,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Configure Git
-        run: |
-          git config --global user.email "github-actions@github.com"
-          git config --global user.name "GitHub Actions"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -26,17 +19,17 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
+      - name: Install and Build
+        run: |
+          npm install
+          npm run build
         env:
           VITE_LIVEPEER_API_KEY: ${{ secrets.LIVEPEER_API_KEY || 'a3eaad66-77f7-4e15-8ee7-4ee59865e603' }}
 
       - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: gh-pages
-          folder: dist
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add -f dist/
+          git commit -m "chore: deploy to gh-pages" || true
+          git push origin HEAD:gh-pages --force
