@@ -116,6 +116,21 @@
   padding: 8px;
 }
 
+.playback-rate-select {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: white;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.playback-rate-select:focus {
+  outline: none;
+  border-color: var(--tg-theme-button-color, #3390ec);
+}
+
 /* 全屏按钮 */
 [data-livepeer-fullscreen-trigger] {
   background: none;
