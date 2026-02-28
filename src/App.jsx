@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import VideoPlayer from './components/VideoPlayer';
 
 const STORAGE_KEY = 'cinenext_videos';
 const STORAGE_SELECTED_KEY = 'cinenext_selected_video_id';
 const STORAGE_DRAFT_TITLE_KEY = 'cinenext_draft_title';
 const STORAGE_DRAFT_PLAYBACK_KEY = 'cinenext_draft_playback_id';
+const STORAGE_INTERACTION_KEY = 'cinenext_video_interactions';
 
 const safeStorageGet = (key, fallback = '') => {
   try {
@@ -84,6 +86,15 @@ function App() {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [videoTitle, setVideoTitle] = useState(() => safeStorageGet(STORAGE_DRAFT_TITLE_KEY, ''));
   const [videoPlaybackId, setVideoPlaybackId] = useState(() => safeStorageGet(STORAGE_DRAFT_PLAYBACK_KEY, ''));
+  const [interactions, setInteractions] = useState(() => {
+    try {
+      const saved = safeStorageGet(STORAGE_INTERACTION_KEY, '{}');
+      const parsed = JSON.parse(saved);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const [sourceError, setSourceError] = useState('');
   const [sourceHint, setSourceHint] = useState('');
   const [playerError, setPlayerError] = useState('');
@@ -133,6 +144,14 @@ function App() {
       // 忽略本地存储异常
     }
   }, [videoTitle, videoPlaybackId]);
+
+  useEffect(() => {
+    try {
+      safeStorageSet(STORAGE_INTERACTION_KEY, JSON.stringify(interactions));
+    } catch {
+      // 忽略本地存储异常
+    }
+  }, [interactions]);
 
   useEffect(() => {
     // 初始化 Telegram Web App
@@ -319,15 +338,167 @@ function App() {
     }
   };
 
+  const getInteractionByVideoId = (videoId) => {
+    const entry = interactions[String(videoId)];
+    return {
+      likes: Number(entry?.likes || 0),
+      comments: Number(entry?.comments || 0),
+      shares: Number(entry?.shares || 0),
+      liked: Boolean(entry?.liked),
+    };
+  };
+
+  const updateInteraction = (videoId, updater) => {
+    const key = String(videoId);
+    setInteractions((prev) => {
+      const current = {
+        likes: Number(prev[key]?.likes || 0),
+        comments: Number(prev[key]?.comments || 0),
+        shares: Number(prev[key]?.shares || 0),
+        liked: Boolean(prev[key]?.liked),
+      };
+      return {
+        ...prev,
+        [key]: updater(current),
+      };
+    });
+  };
+
+  const handleLike = () => {
+    if (!selectedVideo?.id) {
+      return;
+    }
+
+    updateInteraction(selectedVideo.id, (current) => {
+      if (current.liked) {
+        return {
+          ...current,
+          liked: false,
+          likes: Math.max(0, current.likes - 1),
+        };
+      }
+
+      return {
+        ...current,
+        liked: true,
+        likes: current.likes + 1,
+      };
+    });
+
+    const tg = getTelegramWebApp();
+    tg?.HapticFeedback?.impactOccurred('light');
+  };
+
+  const handleComment = () => {
+    if (!selectedVideo?.id) {
+      return;
+    }
+
+    const commentText = window.prompt('输入评论内容');
+    if (!commentText || !commentText.trim()) {
+      return;
+    }
+
+    updateInteraction(selectedVideo.id, (current) => ({
+      ...current,
+      comments: current.comments + 1,
+    }));
+
+    const tg = getTelegramWebApp();
+    if (tg) {
+      tg.showAlert('评论已发送');
+      tg.HapticFeedback?.notificationOccurred('success');
+    }
+  };
+
+  const handleShare = async () => {
+    if (!selectedVideo?.id) {
+      return;
+    }
+
+    const shareText = `正在看：${selectedVideo.title}`;
+    const shareUrl = selectedVideo.playbackUrl;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: selectedVideo.title,
+          text: shareText,
+          url: shareUrl,
+        });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        window.alert('播放链接已复制');
+      } else {
+        window.prompt('复制播放链接', shareUrl);
+      }
+
+      updateInteraction(selectedVideo.id, (current) => ({
+        ...current,
+        shares: current.shares + 1,
+      }));
+
+      const tg = getTelegramWebApp();
+      tg?.HapticFeedback?.notificationOccurred('success');
+    } catch {
+      // 用户主动取消分享时静默处理
+    }
+  };
+
+  const currentInteraction = selectedVideo?.id
+    ? getInteractionByVideoId(selectedVideo.id)
+    : { likes: 0, comments: 0, shares: 0, liked: false };
+
   return (
-    <div className="container">
-      <div className="header">
-          <h1>🎥 Livepeer 视频播放器</h1>
-          {tgUser && (
-            <p style={{ marginTop: '8px', fontSize: '14px', opacity: 0.7 }}>
-              欢迎, {tgUser.first_name}!
-            </p>
-          )}
+    <div className="app-shell">
+      {selectedVideo ? (
+        <section className="short-player-screen">
+          <div className="short-player-video">
+            <VideoPlayer
+              playbackId={selectedVideo.playbackId}
+              playbackUrl={selectedVideo.playbackUrl}
+            />
+          </div>
+
+          <div className="short-player-overlay" />
+
+          <div className="short-player-meta">
+            <h1>{selectedVideo.title}</h1>
+            <p>{selectedVideo.description}</p>
+            {tgUser && <span>@{tgUser.username || tgUser.first_name}</span>}
+          </div>
+
+          <div className="short-player-actions">
+            <button
+              className={`action-btn ${currentInteraction.liked ? 'active' : ''}`}
+              type="button"
+              onClick={handleLike}
+            >
+              <strong>❤</strong>
+              <span>{currentInteraction.likes}</span>
+            </button>
+
+            <button className="action-btn" type="button" onClick={handleComment}>
+              <strong>💬</strong>
+              <span>{currentInteraction.comments}</span>
+            </button>
+
+            <button className="action-btn" type="button" onClick={handleShare}>
+              <strong>↗</strong>
+              <span>{currentInteraction.shares}</span>
+            </button>
+          </div>
+
+          {playerError && <div className="error floating-error">{playerError}</div>}
+        </section>
+      ) : (
+        <div className="loading short-empty">先添加一个 playbackId 开始播放</div>
+      )}
+
+      <div className="control-panel">
+        <div className="header">
+          <h2>短剧管理</h2>
+          {tgUser && <p>欢迎, {tgUser.first_name}!</p>}
         </div>
 
         <div className="source-form">
@@ -360,7 +531,7 @@ function App() {
         </div>
 
         <div className="video-list">
-          <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>视频列表</h2>
+          <h3>视频列表</h3>
           {videos.length === 0 ? (
             <div className="loading">暂无视频源，请先添加 playbackId</div>
           ) : (
@@ -376,24 +547,8 @@ function App() {
             ))
           )}
         </div>
-
-        {selectedVideo ? (
-          <div className="player-container">
-            <video
-              className="native-player"
-              controls
-              autoPlay
-              playsInline
-              preload="metadata"
-              src={selectedVideo.playbackUrl}
-              onError={() => setPlayerError('播放器加载失败，请检查 playbackId 或稍后重试。')}
-            />
-            {playerError && <div className="error">{playerError}</div>}
-          </div>
-        ) : (
-          <div className="loading">先添加一个 playbackId 开始播放</div>
-        )}
       </div>
+    </div>
   );
 }
 
