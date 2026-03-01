@@ -128,7 +128,12 @@ const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
 
   if (!response.ok) {
     const reason =
-      parsed?.error || parsed?.message || parsed?.details || text || `请求失败（HTTP ${response.status}）`;
+      parsed?.error ||
+      parsed?.message ||
+      parsed?.details ||
+      (Array.isArray(parsed?.errors) && parsed.errors[0]) ||
+      text ||
+      `请求失败（HTTP ${response.status}）`;
     throw new Error(String(reason));
   }
 
@@ -427,8 +432,15 @@ connectBtn.addEventListener('click', async () => {
     setApiStatus('连接中...');
     await refreshAssets();
   } catch (error) {
-    setApiStatus('连接失败，请检查 API Key 或网络。', true);
-    showToast(error instanceof Error ? error.message : '连接失败', true);
+    const message = error instanceof Error ? error.message : '连接失败';
+    if (message.includes('disallows CORS') || message.toLowerCase().includes('cors')) {
+      setApiStatus('连接失败：该 API Key 未放行当前域名（CORS）。请到 Livepeer Key 设置里添加此域名。', true);
+    } else if (message.includes('Failed to fetch')) {
+      setApiStatus('连接失败：网络请求被拦截或超时，请检查网络/代理/浏览器插件。', true);
+    } else {
+      setApiStatus('连接失败，请检查 API Key 或网络。', true);
+    }
+    showToast(message, true);
   }
 });
 
