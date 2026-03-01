@@ -18,10 +18,14 @@ const emptyState = document.querySelector('#empty-state');
 const toast = document.querySelector('#toast');
 
 const resetFormBtn = document.querySelector('#reset-form');
+const submitBtn = document.querySelector('#submit-btn');
+const formTitle = document.querySelector('#form-title');
 const refreshBtn = document.querySelector('#refresh-list');
 const clearAllBtn = document.querySelector('#clear-all');
 const exportBtn = document.querySelector('#export-json');
 const importInput = document.querySelector('#import-json');
+
+let editingId = '';
 
 const safeParse = (raw, fallback) => {
   try {
@@ -71,10 +75,43 @@ const toRow = (video, index) => {
     <td>${video.playbackId || '-'}</td>
     <td>${video.unlockType === 'nft' ? 'NFT' : '免费'}</td>
     <td class="actions-cell">
+      <button type="button" class="secondary" data-action="edit" data-id="${video.id}">编辑</button>
       <button type="button" data-action="delete" data-id="${video.id}">删除</button>
     </td>
   `;
   return tr;
+};
+
+const resetFormState = () => {
+  editingId = '';
+  formTitle.textContent = '新增短剧';
+  submitBtn.textContent = '添加到列表';
+  resetFormBtn.textContent = '清空输入';
+
+  form.reset();
+  episodeInput.value = '1';
+  priceInput.value = '0.5';
+  unlockTypeInput.value = 'free';
+  playbackUrlInput.value = '';
+};
+
+const startEdit = (video) => {
+  editingId = String(video.id);
+  formTitle.textContent = '编辑短剧';
+  submitBtn.textContent = '保存修改';
+  resetFormBtn.textContent = '取消编辑';
+
+  titleInput.value = String(video.title || '');
+  playbackIdInput.value = String(video.playbackId || '');
+  playbackUrlInput.value = String(video.playbackUrl || '');
+  episodeInput.value = String(Math.max(1, Number(video.episode || 1)));
+  unlockTypeInput.value = video.unlockType === 'nft' ? 'nft' : 'free';
+  nftAddressInput.value = String(video.nftCollectionAddress || '');
+  priceInput.value = String(video.price || '0.5');
+  actorsInput.value = Array.isArray(video.actors) ? video.actors.join(', ') : '';
+  keywordsInput.value = Array.isArray(video.keywords) ? video.keywords.join(', ') : '';
+
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 const render = () => {
@@ -137,20 +174,33 @@ form.addEventListener('submit', (event) => {
   try {
     const video = buildVideo();
     const list = readList();
+    const conflict = list.some(
+      (item) =>
+        String(item.id) !== String(editingId) &&
+        item.playbackId === video.playbackId &&
+        Number(item.episode || 1) === Number(video.episode || 1)
+    );
 
-    if (list.some((item) => item.playbackId === video.playbackId)) {
-      showToast('该 Playback ID 已存在', true);
+    if (conflict) {
+      showToast('该 Playback ID + 集数 组合已存在', true);
       return;
     }
 
-    list.unshift(video);
+    const existingIndex = list.findIndex((item) => String(item.id) === String(editingId));
+    if (existingIndex >= 0) {
+      list[existingIndex] = {
+        ...list[existingIndex],
+        ...video,
+        id: list[existingIndex].id,
+      };
+    } else {
+      list.unshift(video);
+    }
+
     writeList(list);
-    form.reset();
-    episodeInput.value = '1';
-    priceInput.value = '0.5';
-    unlockTypeInput.value = 'free';
+    resetFormState();
     render();
-    showToast('已添加短剧');
+    showToast(existingIndex >= 0 ? '已保存修改' : '已添加短剧');
   } catch (error) {
     showToast(error.message || '添加失败', true);
   }
@@ -160,24 +210,37 @@ tbody.addEventListener('click', (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
 
-  if (target.dataset.action !== 'delete') return;
+  const action = target.dataset.action;
   const id = target.dataset.id;
   if (!id) return;
 
   const list = readList();
+
+  if (action === 'edit') {
+    const current = list.find((item) => String(item.id) === String(id));
+    if (!current) {
+      showToast('未找到要编辑的记录', true);
+      return;
+    }
+    startEdit(current);
+    return;
+  }
+
+  if (action !== 'delete') return;
+
   const next = list.filter((item) => item.id !== id);
   writeList(next);
+
+  if (String(editingId) === String(id)) {
+    resetFormState();
+  }
+
   render();
   showToast('已删除');
 });
 
 resetFormBtn.addEventListener('click', () => {
-  form.reset();
-  episodeInput.value = '1';
-  priceInput.value = '0.5';
-  unlockTypeInput.value = 'free';
-  playbackUrlInput.value = '';
-  playbackUrlInput.value = '';
+  resetFormState();
 });
 
 refreshBtn.addEventListener('click', () => {
@@ -189,6 +252,7 @@ clearAllBtn.addEventListener('click', () => {
   const ok = window.confirm('确认清空全部短剧吗？');
   if (!ok) return;
   writeList([]);
+  resetFormState();
   render();
   showToast('已清空');
 });
@@ -234,6 +298,7 @@ importInput.addEventListener('change', async () => {
       .filter((item) => item.playbackId);
 
     writeList(normalized);
+    resetFormState();
     render();
     showToast('导入成功');
   } catch (error) {
@@ -243,4 +308,5 @@ importInput.addEventListener('change', async () => {
   }
 });
 
+resetFormState();
 render();
