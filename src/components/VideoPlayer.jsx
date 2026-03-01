@@ -28,6 +28,30 @@ const VideoPlayer = ({
 
   const isHlsSource = typeof sourceUrl === 'string' && /\.m3u8(\?|$)/i.test(sourceUrl);
 
+  const attemptAutoplay = () => {
+    const video = videoRef.current;
+    if (!video || !active || blocked) {
+      return;
+    }
+
+    const tryPlay = () => {
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          setIsPaused(true);
+        });
+      }
+    };
+
+    tryPlay();
+
+    window.setTimeout(() => {
+      if (video.paused) {
+        tryPlay();
+      }
+    }, 280);
+  };
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !sourceUrl || !preload) {
@@ -83,12 +107,7 @@ const VideoPlayer = ({
       return;
     }
 
-    const playPromise = video.play();
-    if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch(() => {
-        setIsPaused(true);
-      });
-    }
+    attemptAutoplay();
   }, [active, blocked]);
 
   useEffect(() => {
@@ -100,14 +119,7 @@ const VideoPlayer = ({
     const handleLoadedMetadata = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0);
       setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
-      if (active && !blocked) {
-        const playPromise = video.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(() => {
-            setIsPaused(true);
-          });
-        }
-      }
+      attemptAutoplay();
     };
     const handleTimeUpdate = () => {
       setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
@@ -119,6 +131,9 @@ const VideoPlayer = ({
     const handlePause = () => {
       setIsPaused(true);
       onPlaybackState?.(false);
+    };
+    const handleCanPlay = () => {
+      attemptAutoplay();
     };
     const handleError = () => {
       const mediaError = video.error;
@@ -136,6 +151,7 @@ const VideoPlayer = ({
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
+    video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('error', handleError);
 
     return () => {
@@ -143,6 +159,7 @@ const VideoPlayer = ({
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('error', handleError);
     };
   }, [onPlaybackState, active, blocked]);
