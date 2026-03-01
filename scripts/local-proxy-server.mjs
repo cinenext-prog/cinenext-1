@@ -13,7 +13,7 @@ const projectRoot = path.resolve(__dirname, '..');
 const distDir = path.join(projectRoot, 'dist');
 
 const app = express();
-const port = Number(process.env.LOCAL_PROXY_PORT || 4173);
+const port = Number(process.env.LOCAL_PROXY_PORT || 3000);
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '20mb' }));
