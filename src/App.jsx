@@ -718,6 +718,24 @@ function App() {
                     {watchlist.includes(video.id) ? '★ 已追' : '☆ 追剧'}
                   </button>
                 </div>
+
+                <div className="episode-switch" onClick={(event) => event.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => moveToIndex(index - 1)}
+                    disabled={index === 0}
+                  >
+                    上一集
+                  </button>
+                  <span>{index + 1} / {videos.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => moveToIndex(index + 1)}
+                    disabled={index === videos.length - 1}
+                  >
+                    下一集
+                  </button>
+                </div>
               </section>
             );
           })}
