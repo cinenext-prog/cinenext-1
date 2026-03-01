@@ -11,6 +11,7 @@ const seriesForm = document.querySelector('#series-form');
 const seriesNameInput = document.querySelector('#series-name');
 const seriesTotalEpisodesInput = document.querySelector('#series-total-episodes');
 const seriesFreeEpisodesInput = document.querySelector('#series-free-episodes');
+const seriesPricePerEpisodeInput = document.querySelector('#series-price-per-episode');
 const seriesDescriptionInput = document.querySelector('#series-description');
 const seriesActorsInput = document.querySelector('#series-actors');
 const seriesResetBtn = document.querySelector('#series-reset');
@@ -19,10 +20,8 @@ const seriesStatus = document.querySelector('#series-status');
 const uploadForm = document.querySelector('#upload-form');
 const uploadSeriesSelect = document.querySelector('#upload-series-select');
 const episodeNumberInput = document.querySelector('#episode-number');
-const uploadFreeEpisodesInput = document.querySelector('#upload-free-episodes');
 const uploadNameInput = document.querySelector('#upload-name');
 const uploadFileInput = document.querySelector('#upload-file');
-const uploadPriceInput = document.querySelector('#upload-price');
 const uploadResetBtn = document.querySelector('#upload-reset');
 const uploadProgress = document.querySelector('#upload-progress');
 const queueSummary = document.querySelector('#queue-summary');
@@ -31,13 +30,26 @@ const queueList = document.querySelector('#queue-list');
 const toast = document.querySelector('#toast');
 
 let seriesDrafts = [];
+let uploadQueue = [];
 
-const sortFilesByName = (files) =>
-  [...files].sort((left, right) =>
-    String(left.name || '').localeCompare(String(right.name || ''), 'zh-CN', { numeric: true, sensitivity: 'base' })
-  );
+const clearUploadQueue = () => {
+  uploadQueue.forEach((item) => {
+    if (item.previewUrl) {
+      URL.revokeObjectURL(item.previewUrl);
+    }
+  });
+  uploadQueue = [];
+};
 
-const getSelectedFiles = () => sortFilesByName(Array.from(uploadFileInput.files || []));
+const setUploadQueueFromFiles = (files) => {
+  clearUploadQueue();
+  uploadQueue = Array.from(files || []).map((file) => ({
+    file,
+    previewUrl: URL.createObjectURL(file),
+  }));
+};
+
+const getQueueFiles = () => uploadQueue.map((item) => item.file);
 
 const safeParse = (raw, fallback) => {
   try {
@@ -76,7 +88,7 @@ const setSeriesStatus = (text, isError = false) => {
 
 const renderQueuePreview = () => {
   const selectedSeries = findSelectedSeries();
-  const files = getSelectedFiles();
+  const files = getQueueFiles();
   queueList.innerHTML = '';
 
   if (!selectedSeries || files.length === 0) {
@@ -88,17 +100,52 @@ const renderQueuePreview = () => {
   const endEpisode = startEpisode + files.length - 1;
   queueSummary.textContent = `本次将上传 ${files.length} 个文件：第 ${startEpisode} 集 ~ 第 ${endEpisode} 集`;
 
-  files.slice(0, 30).forEach((file, index) => {
+  files.forEach((file, index) => {
     const item = document.createElement('li');
-    item.textContent = `第 ${startEpisode + index} 集 ← ${file.name}`;
+    item.className = 'queue-item';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'queue-thumb';
+    thumb.src = uploadQueue[index]?.previewUrl || '';
+    thumb.alt = `预览 ${file.name}`;
+
+    const info = document.createElement('div');
+    info.className = 'queue-info';
+
+    const title = document.createElement('strong');
+    title.textContent = `第 ${startEpisode + index} 集`;
+
+    const name = document.createElement('span');
+    name.textContent = file.name;
+
+    const actions = document.createElement('div');
+    actions.className = 'queue-actions';
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'secondary';
+    upBtn.textContent = '上移';
+    upBtn.dataset.action = 'up';
+    upBtn.dataset.index = String(index);
+    upBtn.disabled = index === 0;
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'secondary';
+    downBtn.textContent = '下移';
+    downBtn.dataset.action = 'down';
+    downBtn.dataset.index = String(index);
+    downBtn.disabled = index === files.length - 1;
+
+    actions.appendChild(upBtn);
+    actions.appendChild(downBtn);
+    info.appendChild(title);
+    info.appendChild(name);
+    info.appendChild(actions);
+    item.appendChild(thumb);
+    item.appendChild(info);
     queueList.appendChild(item);
   });
-
-  if (files.length > 30) {
-    const more = document.createElement('li');
-    more.textContent = `... 其余 ${files.length - 30} 个文件`;
-    queueList.appendChild(more);
-  }
 };
 
 const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
@@ -153,6 +200,7 @@ const readSeriesDrafts = () => {
       seriesName: String(item.seriesName || '').trim(),
       totalEpisodes: Math.max(1, Number(item.totalEpisodes || 1)),
       freeEpisodes: Math.max(0, Number(item.freeEpisodes || 0)),
+      pricePerEpisode: Math.max(0, Number(item.pricePerEpisode ?? 0.5)),
       description: String(item.description || ''),
       actors: Array.isArray(item.actors) ? item.actors : [],
       nextEpisode: Math.max(1, Number(item.nextEpisode || 1)),
@@ -186,7 +234,7 @@ const updateSeriesSelect = () => {
   seriesDrafts.forEach((draft) => {
     const option = document.createElement('option');
     option.value = draft.seriesName;
-    option.textContent = `${draft.seriesName}（总 ${draft.totalEpisodes} 集，前 ${draft.freeEpisodes} 集免费，当前第 ${draft.nextEpisode} 集）`;
+    option.textContent = `${draft.seriesName}（总 ${draft.totalEpisodes} 集，前 ${draft.freeEpisodes} 集免费，每集 ${draft.pricePerEpisode} TON，当前第 ${draft.nextEpisode} 集）`;
     uploadSeriesSelect.appendChild(option);
   });
 
@@ -201,9 +249,8 @@ const updateSeriesSelect = () => {
   const selected = seriesDrafts.find((item) => item.seriesName === uploadSeriesSelect.value);
   if (selected) {
     episodeNumberInput.value = String(selected.nextEpisode);
-    uploadFreeEpisodesInput.value = String(selected.freeEpisodes || 0);
     setSeriesStatus(
-      `已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，前 ${selected.freeEpisodes || 0} 集免费，当前应上传第 ${selected.nextEpisode} 集。`
+      `已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，前 ${selected.freeEpisodes || 0} 集免费，每集 ${selected.pricePerEpisode} TON，当前应上传第 ${selected.nextEpisode} 集。`
     );
   }
   renderQueuePreview();
@@ -261,11 +308,10 @@ const requestUpload = async ({ file, name, metadata }) => {
   });
 };
 
-const buildMetadata = (series) => {
-  const episodeNumber = Math.max(1, Number(episodeNumberInput.value || 1));
-  const freeEpisodes = Math.max(0, Number(uploadFreeEpisodesInput.value || 0));
+const buildMetadata = (series, episodeNumber) => {
+  const freeEpisodes = Math.max(0, Number(series.freeEpisodes || 0));
   const isFreeEpisode = episodeNumber <= freeEpisodes;
-  const price = isFreeEpisode ? '0' : String(uploadPriceInput.value || '0.5').trim();
+  const price = isFreeEpisode ? '0' : String(Math.max(0, Number(series.pricePerEpisode ?? 0.5)));
 
   const metadata = {
     seriesName: series.seriesName,
@@ -315,6 +361,7 @@ seriesForm.addEventListener('submit', (event) => {
     seriesName,
     totalEpisodes,
     freeEpisodes: Math.max(0, Number(seriesFreeEpisodesInput.value || 0)),
+    pricePerEpisode: Math.max(0, Number(seriesPricePerEpisodeInput.value || 0)),
     description: seriesDescriptionInput.value.trim(),
     actors: parseActors(seriesActorsInput.value),
     nextEpisode: 1,
@@ -335,16 +382,18 @@ seriesForm.addEventListener('submit', (event) => {
   updateSeriesSelect();
   uploadSeriesSelect.value = seriesName;
   episodeNumberInput.value = '1';
-  uploadFreeEpisodesInput.value = String(draft.freeEpisodes);
 
   showToast(existingIndex >= 0 ? '已更新剧信息' : '已新建剧信息');
-  setSeriesStatus(`剧《${seriesName}》已保存：前 ${draft.freeEpisodes} 集免费，请在步骤 2 按顺序上传。`);
+  setSeriesStatus(
+    `剧《${seriesName}》已保存：前 ${draft.freeEpisodes} 集免费，每集 ${draft.pricePerEpisode} TON，请在步骤 2 按顺序上传。`
+  );
 });
 
 seriesResetBtn.addEventListener('click', () => {
   seriesForm.reset();
   seriesTotalEpisodesInput.value = '1';
   seriesFreeEpisodesInput.value = '0';
+  seriesPricePerEpisodeInput.value = '0.5';
   setSeriesStatus('已清空步骤 1 表单。');
 });
 
@@ -352,26 +401,45 @@ uploadSeriesSelect.addEventListener('change', () => {
   const selected = findSelectedSeries();
   if (!selected) {
     episodeNumberInput.value = '1';
-    uploadFreeEpisodesInput.value = '0';
     renderQueuePreview();
     return;
   }
   episodeNumberInput.value = String(selected.nextEpisode);
-  uploadFreeEpisodesInput.value = String(selected.freeEpisodes || 0);
   setSeriesStatus(
-    `已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，前 ${selected.freeEpisodes || 0} 集免费，当前应上传第 ${selected.nextEpisode} 集。`
+    `已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，前 ${selected.freeEpisodes || 0} 集免费，每集 ${selected.pricePerEpisode} TON，当前应上传第 ${selected.nextEpisode} 集。`
   );
   renderQueuePreview();
 });
 
 uploadFileInput.addEventListener('change', () => {
+  setUploadQueueFromFiles(uploadFileInput.files || []);
   renderQueuePreview();
+});
+
+queueList.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) return;
+
+  const action = target.dataset.action;
+  const index = Number(target.dataset.index || -1);
+  if (!Number.isInteger(index) || index < 0 || index >= uploadQueue.length) return;
+
+  if (action === 'up' && index > 0) {
+    [uploadQueue[index - 1], uploadQueue[index]] = [uploadQueue[index], uploadQueue[index - 1]];
+    renderQueuePreview();
+    return;
+  }
+
+  if (action === 'down' && index < uploadQueue.length - 1) {
+    [uploadQueue[index], uploadQueue[index + 1]] = [uploadQueue[index + 1], uploadQueue[index]];
+    renderQueuePreview();
+  }
 });
 
 uploadForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  const files = getSelectedFiles();
+  const files = getQueueFiles();
   if (files.length === 0) {
     showToast('请至少选择一个视频文件', true);
     return;
@@ -382,8 +450,6 @@ uploadForm.addEventListener('submit', async (event) => {
     showToast('请先在步骤 1 新建剧并选择该剧', true);
     return;
   }
-
-  selectedSeries.freeEpisodes = Math.max(0, Number(uploadFreeEpisodesInput.value || 0));
 
   const startEpisode = Math.max(1, Number(episodeNumberInput.value || 1));
   if (startEpisode !== selectedSeries.nextEpisode) {
@@ -412,7 +478,7 @@ uploadForm.addEventListener('submit', async (event) => {
       const file = files[index];
       const episodeNumber = startEpisode + index;
       episodeNumberInput.value = String(episodeNumber);
-      const metadata = buildMetadata(selectedSeries);
+      const metadata = buildMetadata(selectedSeries, episodeNumber);
       const uploadName =
         files.length === 1 && namePrefix
           ? namePrefix
@@ -440,6 +506,7 @@ uploadForm.addEventListener('submit', async (event) => {
 
     uploadFileInput.value = '';
     uploadNameInput.value = '';
+    clearUploadQueue();
     renderQueuePreview();
   } catch (error) {
     setUploadProgress('上传失败。', true);
@@ -448,10 +515,16 @@ uploadForm.addEventListener('submit', async (event) => {
 });
 
 uploadResetBtn.addEventListener('click', () => {
+  const selected = findSelectedSeries();
   uploadForm.reset();
-  uploadPriceInput.value = '0.5';
-  uploadFreeEpisodesInput.value = findSelectedSeries() ? String(findSelectedSeries().freeEpisodes || 0) : '0';
-  episodeNumberInput.value = findSelectedSeries() ? String(findSelectedSeries().nextEpisode) : '1';
+  if (selected) {
+    uploadSeriesSelect.value = selected.seriesName;
+    episodeNumberInput.value = String(selected.nextEpisode);
+  } else {
+    episodeNumberInput.value = '1';
+  }
+  uploadFileInput.value = '';
+  clearUploadQueue();
   setUploadProgress('已清空上传表单。');
   renderQueuePreview();
 });
@@ -459,9 +532,8 @@ uploadResetBtn.addEventListener('click', () => {
 const bootstrap = () => {
   const cachedKey = localStorage.getItem(API_KEY_STORAGE) || '';
   apiKeyInput.value = cachedKey;
-  uploadPriceInput.value = '0.5';
+  seriesPricePerEpisodeInput.value = '0.5';
   seriesFreeEpisodesInput.value = '0';
-  uploadFreeEpisodesInput.value = '0';
 
   seriesDrafts = readSeriesDrafts();
   updateSeriesSelect();
@@ -474,5 +546,9 @@ const bootstrap = () => {
 
   setApiStatus('已读取本地 API Key，可直接上传。');
 };
+
+window.addEventListener('beforeunload', () => {
+  clearUploadQueue();
+});
 
 bootstrap();
