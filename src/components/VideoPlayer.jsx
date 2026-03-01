@@ -28,6 +28,9 @@ const VideoPlayer = ({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [playError, setPlayError] = useState('');
+
+  const isHlsSource = typeof sourceUrl === 'string' && /\.m3u8(\?|$)/i.test(sourceUrl);
 
   useEffect(() => {
     setIsMuted(initialMuted);
@@ -38,6 +41,8 @@ const VideoPlayer = ({
     if (!video || !sourceUrl || !preload) {
       return;
     }
+
+    setPlayError('');
 
     video.loop = true;
     video.playsInline = true;
@@ -50,9 +55,9 @@ const VideoPlayer = ({
       hlsRef.current = null;
     }
 
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    if (isHlsSource && video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = sourceUrl;
-    } else if (Hls.isSupported()) {
+    } else if (isHlsSource && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
@@ -72,7 +77,7 @@ const VideoPlayer = ({
       video.removeAttribute('src');
       video.load();
     };
-  }, [sourceUrl, preload, playbackRate, isMuted]);
+  }, [sourceUrl, preload, playbackRate, isMuted, isHlsSource]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -115,17 +120,30 @@ const VideoPlayer = ({
       setIsPaused(true);
       onPlaybackState?.(false);
     };
+    const handleError = () => {
+      const mediaError = video.error;
+      const codeMap = {
+        1: '加载被中止',
+        2: '网络错误',
+        3: '解码失败',
+        4: '资源不可用或地址无效',
+      };
+      const reason = mediaError?.code ? codeMap[mediaError.code] || '播放失败' : '播放失败';
+      setPlayError(reason);
+    };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
+    video.addEventListener('error', handleError);
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      video.removeEventListener('error', handleError);
     };
   }, [onPlaybackState]);
 
@@ -266,6 +284,13 @@ const VideoPlayer = ({
       </button>
 
       <div className="muted-indicator">{isMuted ? '静音' : '有声'}</div>
+
+      {playError && (
+        <div className="lock-overlay" onClick={(event) => event.stopPropagation()}>
+          <p>视频播放失败：{playError}</p>
+          <p style={{ fontSize: 12, opacity: 0.85, wordBreak: 'break-all' }}>{sourceUrl}</p>
+        </div>
+      )}
 
       {showSpeedSheet && (
         <div className="speed-sheet" onClick={(event) => event.stopPropagation()}>
