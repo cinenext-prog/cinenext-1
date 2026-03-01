@@ -43,9 +43,12 @@ const VideoPlayer = ({
     const tryPlay = () => {
       const playPromise = video.play();
       if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {
+        playPromise.catch((error) => {
           setIsPaused(true);
-          setNeedUserStart(true);
+          const name = error?.name || '';
+          if (name === 'NotAllowedError') {
+            setNeedUserStart(true);
+          }
         });
       }
     };

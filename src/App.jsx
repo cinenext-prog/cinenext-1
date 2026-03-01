@@ -170,8 +170,6 @@ function App() {
 
   const feedRef = useRef(null);
   const pendingScrollIndexRef = useRef(null);
-  const touchStartYRef = useRef(null);
-  const swipeLockRef = useRef(false);
 
   const activeVideo = videos[activeIndex] || null;
 
@@ -536,69 +534,21 @@ function App() {
     );
   };
 
-  const moveToIndex = (targetIndex) => {
+  const onFeedScroll = () => {
     if (!feedRef.current || videos.length === 0) {
       return;
     }
 
-    const safeIndex = Math.min(videos.length - 1, Math.max(0, targetIndex));
-    if (safeIndex === activeIndex) {
+    const { scrollTop, clientHeight } = feedRef.current;
+    if (clientHeight <= 0) {
       return;
     }
 
-    setActiveIndex(safeIndex);
-    feedRef.current.scrollTo({
-      top: feedRef.current.clientHeight * safeIndex,
-      behavior: 'smooth',
-    });
-  };
-
-  const moveByDirection = (direction) => {
-    if (swipeLockRef.current) {
-      return;
+    const nextIndex = Math.round(scrollTop / clientHeight);
+    const safeIndex = Math.min(videos.length - 1, Math.max(0, nextIndex));
+    if (safeIndex !== activeIndex) {
+      setActiveIndex(safeIndex);
     }
-
-    swipeLockRef.current = true;
-    moveToIndex(activeIndex + direction);
-
-    window.setTimeout(() => {
-      swipeLockRef.current = false;
-    }, 360);
-  };
-
-  const onFeedTouchStart = (event) => {
-    touchStartYRef.current = event.touches?.[0]?.clientY ?? null;
-  };
-
-  const onFeedTouchEnd = (event) => {
-    const startY = touchStartYRef.current;
-    touchStartYRef.current = null;
-
-    if (typeof startY !== 'number') {
-      return;
-    }
-
-    const endY = event.changedTouches?.[0]?.clientY;
-    if (typeof endY !== 'number') {
-      return;
-    }
-
-    const deltaY = startY - endY;
-    if (Math.abs(deltaY) < 36) {
-      return;
-    }
-
-    moveByDirection(deltaY > 0 ? 1 : -1);
-  };
-
-  const onFeedWheel = (event) => {
-    const deltaY = event.deltaY || 0;
-    if (Math.abs(deltaY) < 8) {
-      return;
-    }
-
-    event.preventDefault();
-    moveByDirection(deltaY > 0 ? 1 : -1);
   };
 
   const navigateToHomeVideo = (videoId, keyword = '') => {
@@ -702,9 +652,7 @@ function App() {
         <div
           className="feed-scroll"
           ref={feedRef}
-          onTouchStart={onFeedTouchStart}
-          onTouchEnd={onFeedTouchEnd}
-          onWheel={onFeedWheel}
+          onScroll={onFeedScroll}
         >
           {videos.map((video, index) => {
             const interaction = getInteraction(video);
