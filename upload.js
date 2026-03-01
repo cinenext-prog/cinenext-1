@@ -1,3 +1,5 @@
+import * as tus from 'tus-js-client';
+
 const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
 const SERIES_DRAFTS_STORAGE = 'cinenext_series_drafts';
 const LIVEPEER_API_BASES = ['https://livepeer.studio/api', 'https://livepeer.com/api'];
@@ -296,9 +298,6 @@ const requestUpload = async ({ file, name, metadata }) => {
   }
 
   const tusUrl = String(requestUploadResult?.url || '').trim();
-
-  const tusModule = await import('https://esm.sh/tus-js-client@4.3.1');
-  const tus = tusModule.default || tusModule;
 
   const uploadMetadata = {
     filename: file.name,
