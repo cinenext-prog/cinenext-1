@@ -69,6 +69,43 @@ const setSeriesStatus = (text, isError = false) => {
   seriesStatus.style.color = isError ? '#ff9d9d' : '#97a2bb';
 };
 
+const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
+  const apiKey = readApiKey();
+  if (!apiKey) {
+    throw new Error('请先填写 API Key');
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+  };
+
+  if (body) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(`${LIVEPEER_API_BASE}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const text = await response.text();
+  const parsed = safeParse(text, null);
+
+  if (!response.ok) {
+    const reason =
+      parsed?.error ||
+      parsed?.message ||
+      parsed?.details ||
+      (Array.isArray(parsed?.errors) && parsed.errors[0]) ||
+      text ||
+      `请求失败（HTTP ${response.status}）`;
+    throw new Error(String(reason));
+  }
+
+  return parsed;
+};
+
 const parseActors = (value) =>
   String(value || '')
     .split(',')
@@ -138,9 +175,18 @@ const updateSeriesSelect = () => {
 const findSelectedSeries = () => seriesDrafts.find((item) => item.seriesName === uploadSeriesSelect.value);
 
 const requestUpload = async ({ file, name, metadata }) => {
-  const apiKey = readApiKey();
-  if (!apiKey) {
-    throw new Error('请先填写 API Key');
+  const requestUploadResult = await requestLivepeer('/asset/request-upload', {
+    method: 'POST',
+    body: {
+      name,
+      metadata,
+      corsOrigin: window.location.origin,
+    },
+  });
+
+  const tusEndpoint = String(requestUploadResult?.tusEndpoint || '').trim();
+  if (!tusEndpoint) {
+    throw new Error('未获取到 tus 上传地址（tusEndpoint）');
   }
 
   const tusModule = await import('https://esm.sh/tus-js-client@4.3.1');
@@ -160,10 +206,7 @@ const requestUpload = async ({ file, name, metadata }) => {
 
   return new Promise((resolve, reject) => {
     const upload = new tus.Upload(file, {
-      endpoint: `${LIVEPEER_API_BASE}/asset/upload/direct`,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      endpoint: tusEndpoint,
       retryDelays: [0, 1000, 3000, 5000],
       metadata: uploadMetadata,
       onError: (error) => {
