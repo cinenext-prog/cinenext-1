@@ -8,20 +8,10 @@ function useVideoReloadSync(onReload, videoKeySet) {
       }
     };
 
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        onReload();
-      }
-    };
-
     window.addEventListener('storage', onStorage);
-    window.addEventListener('focus', onReload);
-    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       window.removeEventListener('storage', onStorage);
-      window.removeEventListener('focus', onReload);
-      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [onReload, videoKeySet]);
 }
