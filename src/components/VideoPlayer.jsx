@@ -3,6 +3,7 @@ import Hls from 'hls.js';
 import '../player.css';
 
 const LONG_PRESS_MS = 450;
+const AUTOPLAY_UNLOCK_KEY = 'cinenext_autoplay_unlocked';
 
 const VideoPlayer = ({
   sourceUrl,
@@ -25,6 +26,7 @@ const VideoPlayer = ({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playError, setPlayError] = useState('');
+  const [needUserStart, setNeedUserStart] = useState(false);
 
   const isHlsSource = typeof sourceUrl === 'string' && /\.m3u8(\?|$)/i.test(sourceUrl);
 
@@ -34,11 +36,16 @@ const VideoPlayer = ({
       return;
     }
 
+    if (needUserStart) {
+      return;
+    }
+
     const tryPlay = () => {
       const playPromise = video.play();
       if (playPromise && typeof playPromise.catch === 'function') {
         playPromise.catch(() => {
           setIsPaused(true);
+          setNeedUserStart(true);
         });
       }
     };
@@ -52,7 +59,37 @@ const VideoPlayer = ({
     }, 280);
   };
 
+  const handleUserStart = (event) => {
+    event.stopPropagation();
+
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise
+        .then(() => {
+          setNeedUserStart(false);
+          sessionStorage.setItem(AUTOPLAY_UNLOCK_KEY, '1');
+        })
+        .catch(() => {
+          setNeedUserStart(true);
+        });
+      return;
+    }
+
+    setNeedUserStart(false);
+    sessionStorage.setItem(AUTOPLAY_UNLOCK_KEY, '1');
+  };
+
   useEffect(() => {
+    const unlocked = sessionStorage.getItem(AUTOPLAY_UNLOCK_KEY) === '1';
+    if (unlocked) {
+      setNeedUserStart(false);
+    }
+
     const video = videoRef.current;
     if (!video || !sourceUrl || !preload) {
       return;
@@ -126,6 +163,7 @@ const VideoPlayer = ({
     };
     const handlePlay = () => {
       setIsPaused(false);
+      setNeedUserStart(false);
       onPlaybackState?.(true);
     };
     const handlePause = () => {
@@ -280,6 +318,12 @@ const VideoPlayer = ({
         <div className="lock-overlay" onClick={(event) => event.stopPropagation()}>
           <p>视频播放失败：{playError}</p>
           <p style={{ fontSize: 12, opacity: 0.85, wordBreak: 'break-all' }}>{sourceUrl}</p>
+        </div>
+      )}
+
+      {!playError && needUserStart && active && !blocked && (
+        <div className="start-overlay" onClick={handleUserStart}>
+          <button type="button" onClick={handleUserStart}>点击开始播放</button>
         </div>
       )}
 
