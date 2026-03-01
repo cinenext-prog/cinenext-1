@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'cinenext_videos';
+const COMPAT_STORAGE_KEY = 'legacyVideos';
 
 const form = document.querySelector('#video-form');
 const titleInput = document.querySelector('#title');
@@ -30,7 +31,7 @@ const safeParse = (raw, fallback) => {
 };
 
 const readList = () => {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(COMPAT_STORAGE_KEY);
   if (!raw) return [];
   const data = safeParse(raw, []);
   return Array.isArray(data) ? data : [];
@@ -38,6 +39,7 @@ const readList = () => {
 
 const writeList = (list) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  localStorage.setItem(COMPAT_STORAGE_KEY, JSON.stringify(list));
 };
 
 const showToast = (text, isError = false) => {

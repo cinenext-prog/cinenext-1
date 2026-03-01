@@ -133,6 +133,7 @@ function App() {
   const [accessMap, setAccessMap] = useState({});
 
   const [unlockingId, setUnlockingId] = useState('');
+  const [reloadTick, setReloadTick] = useState(0);
 
   const feedRef = useRef(null);
   const pendingScrollIndexRef = useRef(null);
@@ -296,6 +297,34 @@ function App() {
 
     return () => {
       cancelled = true;
+    };
+  }, [reloadTick]);
+
+  useEffect(() => {
+    const requestReload = () => {
+      setReloadTick((prev) => prev + 1);
+    };
+
+    const onStorage = (event) => {
+      if (!event.key || event.key === STORAGE_KEYS.legacyVideos) {
+        requestReload();
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        requestReload();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', requestReload);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', requestReload);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
