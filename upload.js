@@ -287,8 +287,6 @@ const requestUpload = async ({ file, name, metadata }) => {
     method: 'POST',
     body: {
       name,
-      metadata,
-      corsOrigin: '*',
     },
   });
 
