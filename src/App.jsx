@@ -2,154 +2,26 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 import HomeFeed from './components/HomeFeed';
 import SearchPage from './components/SearchPage';
+import usePersistentState from './hooks/usePersistentState';
+import { safeGet, safeSet } from './lib/storage';
+import {
+  HOT_KEYWORDS,
+  LOCAL_VIDEO_KEYS,
+  formatCount,
+  normalizeAsset,
+  readLegacyVideos,
+} from './lib/videoData';
 
 const STORAGE_KEYS = {
   searchHistory: 'cinenext_search_history',
   watchHistory: 'cinenext_watch_history',
   watchlist: 'cinenext_watchlist',
   interactions: 'cinenext_interactions',
-  legacyVideos: 'cinenext_videos',
 };
 
-const HOT_KEYWORDS = ['短剧', '逆袭', '豪门', '重生', '甜宠'];
-const LOCAL_VIDEO_KEYS = [
-  STORAGE_KEYS.legacyVideos,
-  'legacyVideos',
-  'cinenext_videos',
-  'cinenext_admin_videos',
-];
 const LOCAL_VIDEO_KEY_SET = new Set(LOCAL_VIDEO_KEYS);
 
-const safeGet = (key, fallback) => {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      return fallback;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-};
-
-const safeSet = (key, value) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore
-  }
-};
-
 const getTelegramWebApp = () => window.Telegram?.WebApp || null;
-
-const toText = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
-
-const toPlaybackUrl = (playbackId) => `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
-const toCoverUrl = (playbackId) => `https://livepeer.studio/thumbnail/${playbackId}.png`;
-
-const normalizeAsset = (asset, index) => {
-  const playbackId = toText(asset?.playbackId || asset?.playback_id);
-  if (!playbackId) {
-    return null;
-  }
-
-  const metadata = typeof asset?.meta === 'object' && asset?.meta
-    ? asset.meta
-    : typeof asset?.metadata === 'object' && asset?.metadata
-      ? asset.metadata
-      : {};
-
-  const episode = metadata.episode || metadata.currentEpisode || index + 1;
-  const nftCollectionAddress = metadata.nftCollectionAddress || metadata.collectionAddress || '';
-  const unlockType = nftCollectionAddress ? 'nft' : 'free';
-  const price = metadata.price || metadata.unlockPrice || '0.5';
-  const actorList = Array.isArray(metadata.actors)
-    ? metadata.actors
-    : typeof metadata.actors === 'string' && metadata.actors
-      ? metadata.actors.split(',').map((actor) => actor.trim()).filter(Boolean)
-      : [];
-
-  const keywordList = Array.isArray(metadata.keywords)
-    ? metadata.keywords
-    : typeof metadata.keywords === 'string' && metadata.keywords
-      ? metadata.keywords.split(',').map((keyword) => keyword.trim()).filter(Boolean)
-      : [];
-
-  return {
-    id: String(asset?.id || playbackId),
-    playbackId,
-    playbackUrl: toPlaybackUrl(playbackId),
-    coverUrl: toCoverUrl(playbackId),
-    title: toText(asset?.name || metadata.title, `短剧 ${index + 1}`),
-    episode: Number(episode) || index + 1,
-    likes: Number(metadata.likes || Math.floor(2000 + Math.random() * 9000)),
-    views: Number(metadata.views || Math.floor(30000 + Math.random() * 300000)),
-    actors: actorList,
-    keywords: keywordList,
-    unlockType,
-    nftCollectionAddress,
-    price,
-  };
-};
-
-const normalizeLegacyVideo = (video, index) => {
-  const playbackId = toText(video?.playbackId);
-  if (!playbackId) {
-    return null;
-  }
-
-  const episode = Number(video?.episode || index + 1) || index + 1;
-  const likes = Number(video?.likes || 1000 + index * 87);
-  const views = Number(video?.views || 10000 + index * 529);
-  const unlockType = video?.unlockType === 'nft' ? 'nft' : 'free';
-  const actors = Array.isArray(video?.actors) ? video.actors : [];
-  const keywords = Array.isArray(video?.keywords) ? video.keywords : [];
-
-  return {
-    id: String(video?.id || `legacy-${playbackId}`),
-    playbackId,
-    playbackUrl: toText(video?.playbackUrl, toPlaybackUrl(playbackId)),
-    coverUrl: toCoverUrl(playbackId),
-    title: toText(video?.title, `短剧 ${index + 1}`),
-    episode,
-    likes,
-    views,
-    actors,
-    keywords,
-    unlockType,
-    nftCollectionAddress: toText(video?.nftCollectionAddress),
-    price: toText(video?.price, '0.5'),
-  };
-};
-
-const readLegacyVideos = () => {
-  const all = [];
-  LOCAL_VIDEO_KEYS.forEach((key) => {
-    const list = safeGet(key, []);
-    if (Array.isArray(list)) {
-      all.push(...list);
-    }
-  });
-
-  const normalized = all.map(normalizeLegacyVideo).filter(Boolean);
-  const unique = new Map();
-
-  normalized.forEach((video) => {
-    const sig = `${video.playbackId}::${video.episode}::${video.title}`;
-    if (!unique.has(sig)) {
-      unique.set(sig, video);
-    }
-  });
-
-  return [...unique.values()];
-};
-
-const formatCount = (value) => {
-  if (value >= 10000) {
-    return `${(value / 10000).toFixed(1)}w`;
-  }
-  return String(value);
-};
 
 function App() {
   const [tonConnectUI] = useTonConnectUI();
@@ -162,9 +34,9 @@ function App() {
   const [loadError, setLoadError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchHistory, setSearchHistory] = useState(() => safeGet(STORAGE_KEYS.searchHistory, []));
-  const [watchlist, setWatchlist] = useState(() => safeGet(STORAGE_KEYS.watchlist, []));
-  const [interactions, setInteractions] = useState(() => safeGet(STORAGE_KEYS.interactions, {}));
+  const [searchHistory, setSearchHistory] = usePersistentState(STORAGE_KEYS.searchHistory, []);
+  const [watchlist, setWatchlist] = usePersistentState(STORAGE_KEYS.watchlist, []);
+  const [interactions, setInteractions] = usePersistentState(STORAGE_KEYS.interactions, {});
   const [accessMap, setAccessMap] = useState({});
 
   const [unlockingId, setUnlockingId] = useState('');
@@ -177,16 +49,10 @@ function App() {
   const activeVideo = videos[activeIndex] || null;
 
   useEffect(() => {
-    safeSet(STORAGE_KEYS.searchHistory, searchHistory.slice(0, 5));
-  }, [searchHistory]);
-
-  useEffect(() => {
-    safeSet(STORAGE_KEYS.watchlist, watchlist);
-  }, [watchlist]);
-
-  useEffect(() => {
-    safeSet(STORAGE_KEYS.interactions, interactions);
-  }, [interactions]);
+    if (searchHistory.length > 5) {
+      setSearchHistory((prev) => prev.slice(0, 5));
+    }
+  }, [searchHistory, setSearchHistory]);
 
   useEffect(() => {
     const history = safeGet(STORAGE_KEYS.watchHistory, []);
