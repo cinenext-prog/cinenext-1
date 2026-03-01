@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 import HomeFeed from './components/HomeFeed';
 import SearchPage from './components/SearchPage';
@@ -20,6 +20,8 @@ const STORAGE_KEYS = {
   watchlist: 'cinenext_watchlist',
   interactions: 'cinenext_interactions',
 };
+
+const getTelegramWebApp = () => window.Telegram?.WebApp || null;
 
 function App() {
   const [tonConnectUI] = useTonConnectUI();
@@ -45,6 +47,7 @@ function App() {
   const scrollRafRef = useRef(0);
 
   const activeVideo = videos[activeIndex] || null;
+  const currentVideoIdRef = useRef(null);
 
   useTelegramSetup(page, setPage);
 
@@ -69,7 +72,11 @@ function App() {
     }
   }, [activeVideo?.id]);
 
-  const fetchLivepeerAssets = async () => {
+  useEffect(() => {
+    currentVideoIdRef.current = activeVideo?.id || null;
+  }, [activeVideo?.id]);
+
+  const fetchLivepeerAssets = useCallback(async () => {
     const apiKey = import.meta.env.VITE_LIVEPEER_API_KEY;
     if (!apiKey) {
       return [];
@@ -88,7 +95,7 @@ function App() {
     const data = await response.json();
     const list = Array.isArray(data) ? data : data?.assets || [];
     return list.map(normalizeAsset).filter(Boolean);
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,7 +126,7 @@ function App() {
         const nextVideos = [...remoteMap.values(), ...legacyVideos];
 
         if (!cancelled) {
-          const currentId = videos[activeIndex]?.id;
+          const currentId = currentVideoIdRef.current;
           const nextIndex = currentId
             ? Math.max(0, nextVideos.findIndex((video) => video.id === currentId))
             : 0;
@@ -146,11 +153,15 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [reloadTick]);
+  }, [reloadTick, fetchLivepeerAssets]);
 
-  useVideoReloadSync(() => setReloadTick((prev) => prev + 1), LOCAL_VIDEO_KEY_SET);
+  const requestReload = useCallback(() => {
+    setReloadTick((prev) => prev + 1);
+  }, []);
 
-  const checkNftAccess = async (video, address) => {
+  useVideoReloadSync(requestReload, LOCAL_VIDEO_KEY_SET);
+
+  const checkNftAccess = useCallback(async (video, address) => {
     if (!video?.nftCollectionAddress) {
       return true;
     }
@@ -188,7 +199,7 @@ function App() {
     } catch {
       return false;
     }
-  };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,7 +227,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [videos, wallet?.account?.address]);
+  }, [videos, wallet?.account?.address, checkNftAccess]);
 
   const homeSearchResults = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -247,7 +258,7 @@ function App() {
       .map((video) => video.title);
   }, [videos, searchQuery]);
 
-  const updateInteraction = (videoId, updater) => {
+  const updateInteraction = useCallback((videoId, updater) => {
     setInteractions((prev) => {
       const current = prev[videoId] || { liked: false, likes: 0, comments: 0, shares: 0 };
       return {
@@ -255,9 +266,9 @@ function App() {
         [videoId]: updater(current),
       };
     });
-  };
+  }, [setInteractions]);
 
-  const getInteraction = (video) => {
+  const getInteraction = useCallback((video) => {
     const current = interactions[video.id] || { liked: false, likes: 0, comments: 0, shares: 0 };
     return {
       liked: current.liked,
@@ -265,9 +276,9 @@ function App() {
       comments: current.comments,
       shares: current.shares,
     };
-  };
+  }, [interactions]);
 
-  const toggleLike = (video) => {
+  const toggleLike = useCallback((video) => {
     updateInteraction(video.id, (current) => {
       if (current.liked) {
         return {
@@ -282,9 +293,9 @@ function App() {
         likes: current.likes + 1,
       };
     });
-  };
+  }, [updateInteraction]);
 
-  const openComment = (video) => {
+  const openComment = useCallback((video) => {
     const comment = window.prompt(`给《${video.title}》写条评论`);
     if (!comment || !comment.trim()) {
       return;
@@ -294,9 +305,9 @@ function App() {
       ...current,
       comments: current.comments + 1,
     }));
-  };
+  }, [updateInteraction]);
 
-  const shareVideo = async (video) => {
+  const shareVideo = useCallback(async (video) => {
     const shareText = `正在看：${video.title} 第${video.episode}集`;
     const shareUrl = `${window.location.origin}${window.location.pathname}#playback=${video.playbackId}`;
 
@@ -321,17 +332,17 @@ function App() {
     } catch {
       // ignore canceled share
     }
-  };
+  }, [updateInteraction]);
 
-  const toggleWatchlist = (video) => {
+  const toggleWatchlist = useCallback((video) => {
     setWatchlist((prev) =>
       prev.includes(video.id)
         ? prev.filter((id) => id !== video.id)
         : [video.id, ...prev]
     );
-  };
+  }, [setWatchlist]);
 
-  const onFeedScroll = () => {
+  const onFeedScroll = useCallback(() => {
     if (!feedRef.current || videos.length === 0) {
       return;
     }
@@ -356,9 +367,9 @@ function App() {
       const safeIndex = Math.min(videos.length - 1, Math.max(0, nextIndex));
       setActiveIndex((prev) => (prev === safeIndex ? prev : safeIndex));
     });
-  };
+  }, [videos.length]);
 
-  const navigateToHomeVideo = (videoId, keyword = '') => {
+  const navigateToHomeVideo = useCallback((videoId, keyword = '') => {
     const idx = videos.findIndex((video) => video.id === videoId);
     if (idx < 0) {
       return;
@@ -371,7 +382,7 @@ function App() {
     setPage('home');
     setActiveIndex(idx);
     pendingScrollIndexRef.current = idx;
-  };
+  }, [videos, setSearchHistory]);
 
   useEffect(() => {
     if (page !== 'home' || pendingScrollIndexRef.current === null || !feedRef.current) {
@@ -394,12 +405,12 @@ function App() {
     };
   }, []);
 
-  const openSearch = () => {
+  const openSearch = useCallback(() => {
     setPage('search');
     setSearchQuery('');
-  };
+  }, []);
 
-  const requestUnlock = async (video) => {
+  const requestUnlock = useCallback(async (video) => {
     if (!wallet) {
       tonConnectUI.openModal();
       return;
@@ -435,7 +446,7 @@ function App() {
     } finally {
       setUnlockingId('');
     }
-  };
+  }, [wallet, tonConnectUI, checkNftAccess]);
 
   return (
     <div className="app-root">
