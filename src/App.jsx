@@ -170,8 +170,6 @@ function App() {
 
   const feedRef = useRef(null);
   const pendingScrollIndexRef = useRef(null);
-  const touchStartYRef = useRef(null);
-  const wheelLockRef = useRef(false);
 
   const activeVideo = videos[activeIndex] || null;
 
@@ -547,74 +545,6 @@ function App() {
     setActiveIndex(safeIndex);
   };
 
-  const moveToIndex = (targetIndex) => {
-    if (!feedRef.current || videos.length === 0) {
-      return;
-    }
-
-    const safeIndex = Math.min(videos.length - 1, Math.max(0, targetIndex));
-    if (safeIndex === activeIndex) {
-      return;
-    }
-
-    setActiveIndex(safeIndex);
-    feedRef.current.scrollTo({
-      top: feedRef.current.clientHeight * safeIndex,
-      behavior: 'smooth',
-    });
-  };
-
-  const onFeedTouchStart = (event) => {
-    touchStartYRef.current = event.touches?.[0]?.clientY ?? null;
-  };
-
-  const onFeedTouchEnd = (event) => {
-    if (!feedRef.current || videos.length === 0 || touchStartYRef.current === null) {
-      return;
-    }
-
-    const endY = event.changedTouches?.[0]?.clientY;
-    if (typeof endY !== 'number') {
-      touchStartYRef.current = null;
-      return;
-    }
-
-    const deltaY = touchStartYRef.current - endY;
-    touchStartYRef.current = null;
-
-    if (Math.abs(deltaY) < 40) {
-      return;
-    }
-
-    const direction = deltaY > 0 ? 1 : -1;
-    moveToIndex(activeIndex + direction);
-  };
-
-  const onFeedWheel = (event) => {
-    if (videos.length <= 1) {
-      return;
-    }
-
-    const deltaY = event.deltaY || 0;
-    if (Math.abs(deltaY) < 8) {
-      return;
-    }
-
-    event.preventDefault();
-
-    if (wheelLockRef.current) {
-      return;
-    }
-
-    wheelLockRef.current = true;
-    const direction = deltaY > 0 ? 1 : -1;
-    moveToIndex(activeIndex + direction);
-
-    window.setTimeout(() => {
-      wheelLockRef.current = false;
-    }, 260);
-  };
-
   const navigateToHomeVideo = (videoId, keyword = '') => {
     const idx = videos.findIndex((video) => video.id === videoId);
     if (idx < 0) {
@@ -717,9 +647,6 @@ function App() {
           className="feed-scroll"
           ref={feedRef}
           onScroll={onFeedScroll}
-          onTouchStart={onFeedTouchStart}
-          onTouchEnd={onFeedTouchEnd}
-          onWheel={onFeedWheel}
         >
           {videos.map((video, index) => {
             const interaction = getInteraction(video);
@@ -765,24 +692,6 @@ function App() {
                   </button>
                   <button type="button" onClick={() => toggleWatchlist(video)}>
                     {watchlist.includes(video.id) ? '★ 已追' : '☆ 追剧'}
-                  </button>
-                </div>
-
-                <div className="episode-switch" onClick={(event) => event.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={() => moveToIndex(index - 1)}
-                    disabled={index === 0}
-                  >
-                    上一集
-                  </button>
-                  <span>{index + 1} / {videos.length}</span>
-                  <button
-                    type="button"
-                    onClick={() => moveToIndex(index + 1)}
-                    disabled={index === videos.length - 1}
-                  >
-                    下一集
                   </button>
                 </div>
               </section>

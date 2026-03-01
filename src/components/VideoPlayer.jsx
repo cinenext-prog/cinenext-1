@@ -100,6 +100,14 @@ const VideoPlayer = ({
     const handleLoadedMetadata = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0);
       setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
+      if (active && !blocked) {
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {
+            setIsPaused(true);
+          });
+        }
+      }
     };
     const handleTimeUpdate = () => {
       setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
@@ -137,7 +145,7 @@ const VideoPlayer = ({
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('error', handleError);
     };
-  }, [onPlaybackState]);
+  }, [onPlaybackState, active, blocked]);
 
   const togglePause = () => {
     const video = videoRef.current;
@@ -225,6 +233,7 @@ const VideoPlayer = ({
           className="video-element"
           poster={poster}
           preload={active ? 'auto' : 'metadata'}
+          autoPlay={active && !blocked}
           aria-label={title}
         />
       ) : (
