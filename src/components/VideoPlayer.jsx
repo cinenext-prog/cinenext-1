@@ -19,6 +19,8 @@ const VideoPlayer = ({
   const hlsRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const autoplayRetryTimerRef = useRef(null);
+  const timeRafRef = useRef(0);
+  const pendingTimeRef = useRef(0);
 
   const [isPaused, setIsPaused] = useState(false);
   const [showSpeedSheet, setShowSpeedSheet] = useState(false);
@@ -166,7 +168,15 @@ const VideoPlayer = ({
       attemptAutoplay();
     };
     const handleTimeUpdate = () => {
-      setCurrentTime(Number.isFinite(video.currentTime) ? video.currentTime : 0);
+      pendingTimeRef.current = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+      if (timeRafRef.current) {
+        return;
+      }
+
+      timeRafRef.current = window.requestAnimationFrame(() => {
+        timeRafRef.current = 0;
+        setCurrentTime(pendingTimeRef.current);
+      });
     };
     const handlePlay = () => {
       setIsPaused(false);
@@ -204,6 +214,10 @@ const VideoPlayer = ({
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('error', handleError);
+      if (timeRafRef.current) {
+        window.cancelAnimationFrame(timeRafRef.current);
+        timeRafRef.current = 0;
+      }
     };
   }, [active, blocked]);
 
@@ -277,6 +291,9 @@ const VideoPlayer = ({
       clearLongPress();
       if (autoplayRetryTimerRef.current) {
         window.clearTimeout(autoplayRetryTimerRef.current);
+      }
+      if (timeRafRef.current) {
+        window.cancelAnimationFrame(timeRafRef.current);
       }
     };
   }, []);
