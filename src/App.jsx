@@ -7,7 +7,6 @@ const STORAGE_KEYS = {
   watchHistory: 'cinenext_watch_history',
   watchlist: 'cinenext_watchlist',
   interactions: 'cinenext_interactions',
-  mutedMap: 'cinenext_muted_map',
   legacyVideos: 'cinenext_videos',
 };
 
@@ -164,7 +163,6 @@ function App() {
   const [searchHistory, setSearchHistory] = useState(() => safeGet(STORAGE_KEYS.searchHistory, []));
   const [watchlist, setWatchlist] = useState(() => safeGet(STORAGE_KEYS.watchlist, []));
   const [interactions, setInteractions] = useState(() => safeGet(STORAGE_KEYS.interactions, {}));
-  const [mutedMap, setMutedMap] = useState(() => safeGet(STORAGE_KEYS.mutedMap, {}));
   const [accessMap, setAccessMap] = useState({});
 
   const [unlockingId, setUnlockingId] = useState('');
@@ -188,10 +186,6 @@ function App() {
   useEffect(() => {
     safeSet(STORAGE_KEYS.interactions, interactions);
   }, [interactions]);
-
-  useEffect(() => {
-    safeSet(STORAGE_KEYS.mutedMap, mutedMap);
-  }, [mutedMap]);
 
   useEffect(() => {
     const history = safeGet(STORAGE_KEYS.watchHistory, []);
@@ -742,16 +736,9 @@ function App() {
                   title={video.title}
                   active={index === activeIndex}
                   preload={Math.abs(index - activeIndex) <= 3}
-                  initialMuted={mutedMap[video.id] ?? true}
                   blocked={blocked}
                   lockLabel={unlockingId === video.id ? '解锁处理中...' : lockLabel}
                   onUnlock={() => requestUnlock(video)}
-                  onMuteChange={(muted) =>
-                    setMutedMap((prev) => ({
-                      ...prev,
-                      [video.id]: muted,
-                    }))
-                  }
                 />
 
                 <div className="video-meta">

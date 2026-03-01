@@ -10,20 +10,16 @@ const VideoPlayer = ({
   title,
   active,
   preload,
-  initialMuted,
   blocked,
   lockLabel,
   onUnlock,
-  onMuteChange,
   onPlaybackState,
 }) => {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const longPressTimerRef = useRef(null);
-  const singleTapTimerRef = useRef(null);
 
   const [isPaused, setIsPaused] = useState(false);
-  const [isMuted, setIsMuted] = useState(initialMuted);
   const [showSpeedSheet, setShowSpeedSheet] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [duration, setDuration] = useState(0);
@@ -31,10 +27,6 @@ const VideoPlayer = ({
   const [playError, setPlayError] = useState('');
 
   const isHlsSource = typeof sourceUrl === 'string' && /\.m3u8(\?|$)/i.test(sourceUrl);
-
-  useEffect(() => {
-    setIsMuted(initialMuted);
-  }, [initialMuted]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -46,8 +38,8 @@ const VideoPlayer = ({
 
     video.loop = true;
     video.playsInline = true;
-    video.defaultMuted = isMuted;
-    video.muted = isMuted;
+    video.defaultMuted = false;
+    video.muted = false;
     video.playbackRate = playbackRate;
 
     if (hlsRef.current) {
@@ -77,7 +69,7 @@ const VideoPlayer = ({
       video.removeAttribute('src');
       video.load();
     };
-  }, [sourceUrl, preload, playbackRate, isMuted, isHlsSource]);
+  }, [sourceUrl, preload, playbackRate, isHlsSource]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -165,18 +157,6 @@ const VideoPlayer = ({
     }
   };
 
-  const toggleMuted = () => {
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-
-    const nextMuted = !video.muted;
-    video.muted = nextMuted;
-    setIsMuted(nextMuted);
-    onMuteChange?.(nextMuted);
-  };
-
   const clearLongPress = () => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
@@ -201,17 +181,7 @@ const VideoPlayer = ({
       return;
     }
 
-    if (singleTapTimerRef.current) {
-      clearTimeout(singleTapTimerRef.current);
-      singleTapTimerRef.current = null;
-      toggleMuted();
-      return;
-    }
-
-    singleTapTimerRef.current = setTimeout(() => {
-      togglePause();
-      singleTapTimerRef.current = null;
-    }, 230);
+    togglePause();
   };
 
   const handleSeekChange = (event) => {
@@ -237,9 +207,6 @@ const VideoPlayer = ({
   useEffect(() => {
     return () => {
       clearLongPress();
-      if (singleTapTimerRef.current) {
-        clearTimeout(singleTapTimerRef.current);
-      }
     };
   }, []);
 
@@ -282,8 +249,6 @@ const VideoPlayer = ({
       >
         {isPaused ? '▶' : '❚❚'}
       </button>
-
-      <div className="muted-indicator">{isMuted ? '静音' : '有声'}</div>
 
       {playError && (
         <div className="lock-overlay" onClick={(event) => event.stopPropagation()}>
