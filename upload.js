@@ -332,6 +332,10 @@ const requestUpload = async ({ file, name, metadata }) => {
       throw new Error('当前站点未启用 /api/request-upload 代理（静态托管环境）。请使用启用 Serverless API 的部署地址。');
     }
 
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('代理鉴权失败：请在本地服务端设置 LIVEPEER_API_KEY（推荐），或确认当前 API Key 未受域名白名单限制。');
+    }
+
     if (!response.ok) {
       const reason =
         parsed?.error ||
@@ -347,20 +351,37 @@ const requestUpload = async ({ file, name, metadata }) => {
   };
 
   let requestUploadResult;
-  try {
-    requestUploadResult = await requestUploadDirect();
-  } catch (directError) {
+  const shouldPreferProxy = /\.app\.github\.dev$|\.github\.dev$/i.test(window.location.hostname);
+
+  if (shouldPreferProxy) {
     try {
+      setUploadProgress('检测到 Codespaces 域名，优先走本地代理申请上传地址...');
       requestUploadResult = await requestUploadViaProxy();
-    } catch (proxyError) {
-      const directMessage = directError instanceof Error ? directError.message : '未知错误';
-      const proxyMessage = proxyError instanceof Error ? proxyError.message : '未知错误';
-      const isGithubPages = /github\.io$/i.test(window.location.hostname);
-      const hint =
-        isGithubPages && /未启用 \/api\/request-upload 代理|404/.test(proxyMessage)
-          ? '；当前为 GitHub Pages 静态托管，建议切换到 Vercel 并启用 API 路由'
-          : '';
-      throw new Error(`无法申请上传地址：直连失败（${directMessage}）；代理失败（${proxyMessage}）${hint}`);
+    } catch (proxyFirstError) {
+      try {
+        requestUploadResult = await requestUploadDirect();
+      } catch (directErrorAfterProxy) {
+        const proxyMessage = proxyFirstError instanceof Error ? proxyFirstError.message : '未知错误';
+        const directMessage = directErrorAfterProxy instanceof Error ? directErrorAfterProxy.message : '未知错误';
+        throw new Error(`无法申请上传地址：代理失败（${proxyMessage}）；直连失败（${directMessage}）`);
+      }
+    }
+  } else {
+    try {
+      requestUploadResult = await requestUploadDirect();
+    } catch (directError) {
+      try {
+        requestUploadResult = await requestUploadViaProxy();
+      } catch (proxyError) {
+        const directMessage = directError instanceof Error ? directError.message : '未知错误';
+        const proxyMessage = proxyError instanceof Error ? proxyError.message : '未知错误';
+        const isGithubPages = /github\.io$/i.test(window.location.hostname);
+        const hint =
+          isGithubPages && /未启用 \/api\/request-upload 代理|404/.test(proxyMessage)
+            ? '；当前为 GitHub Pages 静态托管，建议切换到本地代理或 Vercel API 路由'
+            : '';
+        throw new Error(`无法申请上传地址：直连失败（${directMessage}）；代理失败（${proxyMessage}）${hint}`);
+      }
     }
   }
 

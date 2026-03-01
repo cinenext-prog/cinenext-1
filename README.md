@@ -72,6 +72,7 @@ npm run upload -- \
 如果你想继续用浏览器页面上传，但线上静态站被 `Failed to fetch` 卡住，可在本机启动代理服务：
 
 ```bash
+export LIVEPEER_API_KEY=<你的Livepeer_API_Key>
 npm run local:web
 ```
 
@@ -84,4 +85,5 @@ npm run local:web
 
 - 该服务会同时托管页面与 `/api/request-upload` 代理。
 - 上传页会在直连失败时自动回退到代理。
-- 可选环境变量：`LIVEPEER_API_KEY`（服务端固定 key，不想在前端输入时可用）。
+- 建议设置环境变量：`LIVEPEER_API_KEY`（服务端固定 key，避免前端域名白名单限制）。
+- 在 `app.github.dev` 域名下，上传会优先走本地代理。
