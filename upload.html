@@ -76,13 +76,13 @@
           </label>
 
           <label>
-            资源名称（可选）
-            <input id="upload-name" placeholder="不填则自动生成：剧名 第X集" />
+            资源名称前缀（可选）
+            <input id="upload-name" placeholder="不填则自动生成：剧名 第X集；批量时作为前缀" />
           </label>
 
           <label>
-            视频文件
-            <input id="upload-file" type="file" accept="video/*" required />
+            视频文件（支持多选）
+            <input id="upload-file" type="file" accept="video/*" required multiple />
           </label>
 
           <label>
@@ -128,6 +128,11 @@
             <button type="button" id="upload-reset" class="secondary">清空上传表单</button>
           </div>
         </form>
+
+        <div class="queue-box">
+          <p id="queue-summary" class="tip">当前未选择文件。</p>
+          <ul id="queue-list" class="queue-list"></ul>
+        </div>
 
         <p id="upload-progress" class="tip">等待上传。</p>
       </section>

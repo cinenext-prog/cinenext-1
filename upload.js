@@ -29,10 +29,19 @@ const uploadEncryptedInput = document.querySelector('#upload-encrypted');
 const uploadMetadataJsonInput = document.querySelector('#upload-metadata-json');
 const uploadResetBtn = document.querySelector('#upload-reset');
 const uploadProgress = document.querySelector('#upload-progress');
+const queueSummary = document.querySelector('#queue-summary');
+const queueList = document.querySelector('#queue-list');
 
 const toast = document.querySelector('#toast');
 
 let seriesDrafts = [];
+
+const sortFilesByName = (files) =>
+  [...files].sort((left, right) =>
+    String(left.name || '').localeCompare(String(right.name || ''), 'zh-CN', { numeric: true, sensitivity: 'base' })
+  );
+
+const getSelectedFiles = () => sortFilesByName(Array.from(uploadFileInput.files || []));
 
 const safeParse = (raw, fallback) => {
   try {
@@ -67,6 +76,33 @@ const setUploadProgress = (text, isError = false) => {
 const setSeriesStatus = (text, isError = false) => {
   seriesStatus.textContent = text;
   seriesStatus.style.color = isError ? '#ff9d9d' : '#97a2bb';
+};
+
+const renderQueuePreview = () => {
+  const selectedSeries = findSelectedSeries();
+  const files = getSelectedFiles();
+  queueList.innerHTML = '';
+
+  if (!selectedSeries || files.length === 0) {
+    queueSummary.textContent = '当前未选择文件。';
+    return;
+  }
+
+  const startEpisode = selectedSeries.nextEpisode;
+  const endEpisode = startEpisode + files.length - 1;
+  queueSummary.textContent = `本次将上传 ${files.length} 个文件：第 ${startEpisode} 集 ~ 第 ${endEpisode} 集`;
+
+  files.slice(0, 30).forEach((file, index) => {
+    const item = document.createElement('li');
+    item.textContent = `第 ${startEpisode + index} 集 ← ${file.name}`;
+    queueList.appendChild(item);
+  });
+
+  if (files.length > 30) {
+    const more = document.createElement('li');
+    more.textContent = `... 其余 ${files.length - 30} 个文件`;
+    queueList.appendChild(more);
+  }
 };
 
 const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
@@ -170,6 +206,7 @@ const updateSeriesSelect = () => {
     episodeNumberInput.value = String(selected.nextEpisode);
     setSeriesStatus(`已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，当前应上传第 ${selected.nextEpisode} 集。`);
   }
+  renderQueuePreview();
 };
 
 const findSelectedSeries = () => seriesDrafts.find((item) => item.seriesName === uploadSeriesSelect.value);
@@ -321,18 +358,24 @@ uploadSeriesSelect.addEventListener('change', () => {
   const selected = findSelectedSeries();
   if (!selected) {
     episodeNumberInput.value = '1';
+    renderQueuePreview();
     return;
   }
   episodeNumberInput.value = String(selected.nextEpisode);
   setSeriesStatus(`已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，当前应上传第 ${selected.nextEpisode} 集。`);
+  renderQueuePreview();
+});
+
+uploadFileInput.addEventListener('change', () => {
+  renderQueuePreview();
 });
 
 uploadForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  const file = uploadFileInput.files?.[0];
-  if (!file) {
-    showToast('请选择视频文件', true);
+  const files = getSelectedFiles();
+  if (files.length === 0) {
+    showToast('请至少选择一个视频文件', true);
     return;
   }
 
@@ -342,8 +385,8 @@ uploadForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  const episodeNumber = Math.max(1, Number(episodeNumberInput.value || 1));
-  if (episodeNumber !== selectedSeries.nextEpisode) {
+  const startEpisode = Math.max(1, Number(episodeNumberInput.value || 1));
+  if (startEpisode !== selectedSeries.nextEpisode) {
     showToast(`请按顺序上传：当前应上传第 ${selectedSeries.nextEpisode} 集`, true);
     episodeNumberInput.value = String(selectedSeries.nextEpisode);
     return;
@@ -354,14 +397,32 @@ uploadForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  const uploadName = uploadNameInput.value.trim() || `${selectedSeries.seriesName} 第${episodeNumber}集`;
+  if (startEpisode + files.length - 1 > selectedSeries.totalEpisodes) {
+    showToast(
+      `本次文件数量超出总集数：当前从第 ${startEpisode} 集开始，只剩 ${selectedSeries.totalEpisodes - startEpisode + 1} 集可上传`,
+      true
+    );
+    return;
+  }
+
+  const namePrefix = uploadNameInput.value.trim();
 
   try {
-    const metadata = buildMetadata(selectedSeries);
-    setUploadProgress('初始化上传...');
-    await requestUpload({ file, name: uploadName, metadata });
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const episodeNumber = startEpisode + index;
+      episodeNumberInput.value = String(episodeNumber);
+      const metadata = buildMetadata(selectedSeries);
+      const uploadName =
+        files.length === 1 && namePrefix
+          ? namePrefix
+          : `${namePrefix || selectedSeries.seriesName} 第${episodeNumber}集`;
 
-    selectedSeries.nextEpisode += 1;
+      setUploadProgress(`准备上传 ${index + 1}/${files.length}：第 ${episodeNumber} 集`);
+      await requestUpload({ file, name: uploadName, metadata });
+      selectedSeries.nextEpisode = episodeNumber + 1;
+    }
+
     writeSeriesDrafts();
     updateSeriesSelect();
     uploadSeriesSelect.value = selectedSeries.seriesName;
@@ -370,15 +431,16 @@ uploadForm.addEventListener('submit', async (event) => {
       setSeriesStatus(`《${selectedSeries.seriesName}》已完成 ${selectedSeries.totalEpisodes} / ${selectedSeries.totalEpisodes} 集上传。`);
     } else {
       setSeriesStatus(
-        `《${selectedSeries.seriesName}》已上传第 ${episodeNumber} 集，下一集为第 ${selectedSeries.nextEpisode} 集。`
+        `《${selectedSeries.seriesName}》本次已上传 ${files.length} 集，下一集为第 ${selectedSeries.nextEpisode} 集。`
       );
     }
-  episodeNumberInput.value = String(selectedSeries.nextEpisode);
+    episodeNumberInput.value = String(selectedSeries.nextEpisode);
     setUploadProgress('上传完成，等待 Livepeer 处理...');
-    showToast('上传成功，可继续下一集');
+    showToast(`上传成功，共完成 ${files.length} 个文件`);
 
     uploadFileInput.value = '';
     uploadNameInput.value = '';
+    renderQueuePreview();
   } catch (error) {
     setUploadProgress('上传失败。', true);
     showToast(error instanceof Error ? error.message : '上传失败', true);
@@ -390,6 +452,7 @@ uploadResetBtn.addEventListener('click', () => {
   uploadPriceInput.value = '0.5';
   episodeNumberInput.value = findSelectedSeries() ? String(findSelectedSeries().nextEpisode) : '1';
   setUploadProgress('已清空上传表单。');
+  renderQueuePreview();
 });
 
 const bootstrap = () => {
@@ -399,6 +462,7 @@ const bootstrap = () => {
 
   seriesDrafts = readSeriesDrafts();
   updateSeriesSelect();
+  renderQueuePreview();
 
   if (!cachedKey) {
     setApiStatus('尚未连接。');

@@ -196,6 +196,27 @@ button.danger {
   font-size: 12px;
 }
 
+.queue-box {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #2a3040;
+  border-radius: 8px;
+  background: #141924;
+}
+
+.queue-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #cfd6e6;
+  font-size: 13px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.queue-list li {
+  margin: 4px 0;
+}
+
 .empty {
   color: #97a2bb;
   font-size: 14px;
