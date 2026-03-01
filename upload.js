@@ -328,6 +328,10 @@ const requestUpload = async ({ file, name, metadata }) => {
     const text = await response.text();
     const parsed = safeParse(text, null);
 
+    if (response.status === 404) {
+      throw new Error('当前站点未启用 /api/request-upload 代理（静态托管环境）。请使用启用 Serverless API 的部署地址。');
+    }
+
     if (!response.ok) {
       const reason =
         parsed?.error ||
@@ -351,7 +355,12 @@ const requestUpload = async ({ file, name, metadata }) => {
     } catch (proxyError) {
       const directMessage = directError instanceof Error ? directError.message : '未知错误';
       const proxyMessage = proxyError instanceof Error ? proxyError.message : '未知错误';
-      throw new Error(`无法申请上传地址：直连失败（${directMessage}）；代理失败（${proxyMessage}）`);
+      const isGithubPages = /github\.io$/i.test(window.location.hostname);
+      const hint =
+        isGithubPages && /未启用 \/api\/request-upload 代理|404/.test(proxyMessage)
+          ? '；当前为 GitHub Pages 静态托管，建议切换到 Vercel 并启用 API 路由'
+          : '';
+      throw new Error(`无法申请上传地址：直连失败（${directMessage}）；代理失败（${proxyMessage}）${hint}`);
     }
   }
 
