@@ -65,7 +65,7 @@ const showToast = (text, isError = false) => {
     if (toast.textContent === text) {
       toast.textContent = '';
     }
-  }, 2600);
+  }, isError ? 8000 : 2600);
 };
 
 const readApiKey = () => apiKeyInput.value.trim();
@@ -258,6 +258,7 @@ const updateSeriesSelect = () => {
 const findSelectedSeries = () => seriesDrafts.find((item) => item.seriesName === uploadSeriesSelect.value);
 
 const requestUpload = async ({ file, name, metadata }) => {
+  setUploadProgress('正在向 Livepeer 申请上传地址...');
   const requestUploadResult = await requestLivepeer('/asset/request-upload', {
     method: 'POST',
     body: {
@@ -290,11 +291,24 @@ const requestUpload = async ({ file, name, metadata }) => {
 
   const getTusErrorMessage = (error) => {
     if (!error) return '上传失败';
+    const originalError = error?.originalRequest?.getUnderlyingObject?.()?.responseText;
     const message = error instanceof Error ? error.message : String(error);
-    const status = error?.originalResponse?.getStatus?.();
-    const body = error?.originalResponse?.getBody?.();
-    if (status && body) return `${message}（HTTP ${status}: ${body}）`;
+    const status =
+      error?.originalResponse?.getStatus?.() ||
+      error?.originalRequest?.getStatus?.() ||
+      error?.status ||
+      null;
+
+    let body = '';
+    try {
+      body = error?.originalResponse?.getBody?.() || originalError || error?.responseText || '';
+    } catch {
+      body = originalError || '';
+    }
+
+    if (status && body) return `${message}（HTTP ${status}: ${String(body).slice(0, 240)}）`;
     if (status) return `${message}（HTTP ${status}）`;
+    if (body) return `${message}（${String(body).slice(0, 240)}）`;
     return message;
   };
 
@@ -318,8 +332,10 @@ const requestUpload = async ({ file, name, metadata }) => {
 
       if (mode === 'uploadUrl' && tusUrl) {
         options.uploadUrl = tusUrl;
+        setUploadProgress('正在使用备用上传通道...');
       } else {
         options.endpoint = tusEndpoint;
+        setUploadProgress('正在建立上传会话...');
       }
 
       upload = new tus.Upload(file, options);
@@ -330,13 +346,13 @@ const requestUpload = async ({ file, name, metadata }) => {
     return await runTusUpload('endpoint');
   } catch (endpointError) {
     if (!tusUrl) {
-      throw endpointError;
+      throw new Error(`主通道上传失败：${endpointError.message}`);
     }
     setUploadProgress('endpoint 上传失败，尝试备用上传方式...');
     try {
       return await runTusUpload('uploadUrl');
     } catch (uploadUrlError) {
-      throw new Error(`上传失败：${uploadUrlError.message}`);
+      throw new Error(`主通道与备用通道均失败：${uploadUrlError.message}`);
     }
   }
 };
@@ -536,8 +552,9 @@ uploadForm.addEventListener('submit', async (event) => {
     clearUploadQueue();
     renderQueuePreview();
   } catch (error) {
-    setUploadProgress('上传失败。', true);
-    showToast(error instanceof Error ? error.message : '上传失败', true);
+    const errorMessage = error instanceof Error ? error.message : String(error || '上传失败');
+    setUploadProgress(`上传失败：${errorMessage}`, true);
+    showToast(`上传失败：${errorMessage}`, true);
   }
 });
 
