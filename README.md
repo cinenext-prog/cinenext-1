@@ -45,3 +45,24 @@ npm run build
 ```
 
 构建产物在 `dist/`，包含 `index.html` 与 `admin.html`。
+
+## 本地命令行上传（不走浏览器）
+
+当浏览器上传遇到 `Failed to fetch`（常见于静态托管环境）时，可使用本地 CLI 直连 Livepeer 上传：
+
+```bash
+npm run upload -- \
+	--api-key <LIVEPEER_API_KEY> \
+	--series "总裁的替身新娘" \
+	--total 20 \
+	--start 1 \
+	--free 3 \
+	--price 0.5 \
+	./videos/ep01.mp4 ./videos/ep02.mp4
+```
+
+说明：
+
+- 文件会按文件名自然排序后上传（顺序即集数）。
+- 自动写入 metadata：`seriesName`、`episodeNumber`、`totalEpisodes`、`freeEpisodes`、`price` 等。
+- 付费规则：`episodeNumber <= freeEpisodes` 时价格自动写 `0`。
