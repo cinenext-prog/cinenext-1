@@ -137,6 +137,7 @@ function App() {
   const feedRef = useRef(null);
   const pendingScrollIndexRef = useRef(null);
   const touchStartYRef = useRef(null);
+  const wheelLockRef = useRef(false);
 
   const activeVideo = videos[activeIndex] || null;
 
@@ -490,6 +491,23 @@ function App() {
     setActiveIndex(safeIndex);
   };
 
+  const moveToIndex = (targetIndex) => {
+    if (!feedRef.current || videos.length === 0) {
+      return;
+    }
+
+    const safeIndex = Math.min(videos.length - 1, Math.max(0, targetIndex));
+    if (safeIndex === activeIndex) {
+      return;
+    }
+
+    setActiveIndex(safeIndex);
+    feedRef.current.scrollTo({
+      top: feedRef.current.clientHeight * safeIndex,
+      behavior: 'smooth',
+    });
+  };
+
   const onFeedTouchStart = (event) => {
     touchStartYRef.current = event.touches?.[0]?.clientY ?? null;
   };
@@ -513,17 +531,32 @@ function App() {
     }
 
     const direction = deltaY > 0 ? 1 : -1;
-    const nextIndex = Math.min(videos.length - 1, Math.max(0, activeIndex + direction));
+    moveToIndex(activeIndex + direction);
+  };
 
-    if (nextIndex === activeIndex) {
+  const onFeedWheel = (event) => {
+    if (videos.length <= 1) {
       return;
     }
 
-    setActiveIndex(nextIndex);
-    feedRef.current.scrollTo({
-      top: feedRef.current.clientHeight * nextIndex,
-      behavior: 'smooth',
-    });
+    const deltaY = event.deltaY || 0;
+    if (Math.abs(deltaY) < 8) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (wheelLockRef.current) {
+      return;
+    }
+
+    wheelLockRef.current = true;
+    const direction = deltaY > 0 ? 1 : -1;
+    moveToIndex(activeIndex + direction);
+
+    window.setTimeout(() => {
+      wheelLockRef.current = false;
+    }, 260);
   };
 
   const navigateToHomeVideo = (videoId, keyword = '') => {
@@ -630,6 +663,7 @@ function App() {
           onScroll={onFeedScroll}
           onTouchStart={onFeedTouchStart}
           onTouchEnd={onFeedTouchEnd}
+          onWheel={onFeedWheel}
         >
           {videos.map((video, index) => {
             const interaction = getInteraction(video);
