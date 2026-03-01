@@ -32,6 +32,10 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          VITE_LIVEPEER_API_KEY: ${{ secrets.LIVEPEER_API_KEY }}
+          VITE_TONCENTER_API_KEY: ${{ secrets.TONCENTER_API_KEY }}
+          VITE_UNLOCK_CONTRACT: ${{ secrets.UNLOCK_CONTRACT }}
         run: npm run build
 
       - name: Setup Pages
