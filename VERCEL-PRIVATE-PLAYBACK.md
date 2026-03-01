@@ -9,6 +9,7 @@
 
 - API: `/api/playback-url`（见 `api/playback-url.js`）
 - 前端：添加视频源时自动请求签名 URL，成功则按私有流播放；失败时回退公开 URL 并提示
+- API: `/api/request-upload`（见 `api/request-upload.js`），用于代理 Livepeer 上传票据请求（解决浏览器端 `Failed to fetch`）
 
 ## 你需要配置的环境变量（Vercel）
 
@@ -23,6 +24,8 @@
   - JWT header 的 `kid`，不填时默认使用 `LIVEPEER_JWT_ISSUER`
 - `LIVEPEER_JWT_TTL_MINUTES`（可选）
   - JWT 有效期（分钟），默认 `30`
+- `LIVEPEER_API_KEY`（用于上传代理，推荐）
+  - 后端调用 Livepeer 上传票据接口时使用
 
 ## 在 Livepeer Studio 里准备 Signing Key
 
@@ -57,6 +60,10 @@ npx vercel dev
 - `playbackId` 正确但仍无法播放
   - 检查资源访问控制策略是否要求特定 claims
   - 检查 Signing Key 是否与该资源策略匹配
+
+- 上传时报错 `无法申请上传地址：连接 Livepeer API 失败：Failed to fetch`
+  - 说明浏览器直连上传票据接口被网络/CORS策略拦截
+  - 使用 `/api/request-upload` 代理即可规避（推荐部署在 Vercel，并配置 `LIVEPEER_API_KEY`）
 
 ## 安全建议
 

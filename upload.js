@@ -4,6 +4,7 @@ const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
 const SERIES_DRAFTS_STORAGE = 'cinenext_series_drafts';
 const LIVEPEER_API_BASES = ['https://livepeer.studio/api', 'https://livepeer.com/api'];
 const LIVEPEER_UPLOAD_PATHS = ['/asset/request-upload', '/asset/upload', '/asset/create-upload', '/asset/requestUpload'];
+const UPLOAD_PROXY_PATH = '/api/request-upload';
 
 const apiKeyInput = document.querySelector('#api-key');
 const saveKeyBtn = document.querySelector('#save-key');
@@ -284,30 +285,74 @@ const findSelectedSeries = () => seriesDrafts.find((item) => item.seriesName ===
 
 const requestUpload = async ({ file, name, metadata }) => {
   setUploadProgress('正在向 Livepeer 申请上传地址...');
-  let requestUploadResult = null;
-  let lastUploadTicketError = null;
+  const requestUploadDirect = async () => {
+    let requestUploadResult = null;
+    let lastUploadTicketError = null;
 
-  for (let index = 0; index < LIVEPEER_UPLOAD_PATHS.length; index += 1) {
-    const uploadPath = LIVEPEER_UPLOAD_PATHS[index];
-    try {
-      if (index > 0) {
-        setUploadProgress(`主上传接口不可用，尝试备用接口 ${uploadPath}...`);
+    for (let index = 0; index < LIVEPEER_UPLOAD_PATHS.length; index += 1) {
+      const uploadPath = LIVEPEER_UPLOAD_PATHS[index];
+      try {
+        if (index > 0) {
+          setUploadProgress(`主上传接口不可用，尝试备用接口 ${uploadPath}...`);
+        }
+        requestUploadResult = await requestLivepeer(uploadPath, {
+          method: 'POST',
+          body: {
+            name,
+          },
+        });
+        return requestUploadResult;
+      } catch (error) {
+        lastUploadTicketError = error;
       }
-      requestUploadResult = await requestLivepeer(uploadPath, {
-        method: 'POST',
-        body: {
-          name,
-        },
-      });
-      break;
-    } catch (error) {
-      lastUploadTicketError = error;
     }
-  }
 
-  if (!requestUploadResult) {
     const reason = lastUploadTicketError instanceof Error ? lastUploadTicketError.message : '未知错误';
     throw new Error(`无法申请上传地址：${reason}`);
+  };
+
+  const requestUploadViaProxy = async () => {
+    setUploadProgress('直连失败，尝试通过代理申请上传地址...');
+
+    const response = await fetch(UPLOAD_PROXY_PATH, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+        apiKey: readApiKey(),
+      }),
+    });
+
+    const text = await response.text();
+    const parsed = safeParse(text, null);
+
+    if (!response.ok) {
+      const reason =
+        parsed?.error ||
+        parsed?.message ||
+        parsed?.details ||
+        (Array.isArray(parsed?.errors) && parsed.errors[0]) ||
+        text ||
+        `代理请求失败（HTTP ${response.status}）`;
+      throw new Error(String(reason));
+    }
+
+    return parsed;
+  };
+
+  let requestUploadResult;
+  try {
+    requestUploadResult = await requestUploadDirect();
+  } catch (directError) {
+    try {
+      requestUploadResult = await requestUploadViaProxy();
+    } catch (proxyError) {
+      const directMessage = directError instanceof Error ? directError.message : '未知错误';
+      const proxyMessage = proxyError instanceof Error ? proxyError.message : '未知错误';
+      throw new Error(`无法申请上传地址：直连失败（${directMessage}）；代理失败（${proxyMessage}）`);
+    }
   }
 
   const tusEndpoint = String(requestUploadResult?.tusEndpoint || '').trim();
