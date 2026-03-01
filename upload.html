@@ -10,7 +10,7 @@
     <main class="page">
       <header class="header">
         <h1>上传视频</h1>
-        <p>两步骤上传：先新建剧信息，再按集数顺序逐集上传视频。</p>
+        <p>两步骤上传：先新建剧，再按集数顺序逐集上传视频。</p>
       </header>
 
       <section class="panel">
@@ -42,32 +42,12 @@
             <input id="series-total-episodes" type="number" min="1" step="1" required value="1" />
           </label>
 
-          <label>
-            前 X 集免费
-            <input id="series-free-episodes" type="number" min="0" step="1" value="0" />
-          </label>
-
-          <label>
-            每集价格 TON
-            <input id="series-price-per-episode" type="number" min="0" step="0.1" value="0.5" />
-          </label>
-
-          <label>
-            简介（可选）
-            <input id="series-description" placeholder="例如：豪门甜宠短剧" />
-          </label>
-
-          <label>
-            演员（可选，逗号分隔）
-            <input id="series-actors" placeholder="演员A, 演员B" />
-          </label>
-
           <div class="actions">
-            <button type="submit" id="series-submit">保存剧信息</button>
+            <button type="submit" id="series-submit">保存</button>
             <button type="button" id="series-reset" class="secondary">清空</button>
           </div>
         </form>
-        <p id="series-status" class="tip">还未创建剧信息。</p>
+        <p id="series-status" class="tip">还未创建剧。</p>
       </section>
 
       <section class="panel">

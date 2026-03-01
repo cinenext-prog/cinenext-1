@@ -33,7 +33,6 @@ export default async function handler(req, res) {
   const body = parseJsonBody(req.body);
   const assetId = String(body?.assetId || '').trim();
   const name = String(body?.name || '').trim();
-  const metadata = body?.metadata;
 
   if (!assetId) {
     return res.status(400).json({ error: 'Missing required field: assetId' });
@@ -41,10 +40,6 @@ export default async function handler(req, res) {
 
   if (!name) {
     return res.status(400).json({ error: 'Missing required field: name' });
-  }
-
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return res.status(400).json({ error: 'metadata must be a JSON object' });
   }
 
   const apiKey = pickApiKey(req, body);
@@ -62,7 +57,7 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name, metadata }),
+      body: JSON.stringify({ name }),
     });
 
     const text = await upstreamResponse.text();

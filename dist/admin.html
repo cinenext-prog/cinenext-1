@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CineNext Livepeer 管理后台</title>
-    <script type="module" crossorigin src="/cinenext-1/assets/admin-BVj0SYx4.js"></script>
+    <script type="module" crossorigin src="/cinenext-1/assets/admin-DAO3TPVA.js"></script>
     <link rel="modulepreload" crossorigin href="/cinenext-1/assets/modulepreload-polyfill-B5Qt9EMX.js">
-    <link rel="stylesheet" crossorigin href="/cinenext-1/assets/admin-BHgq8y0F.css">
+    <link rel="stylesheet" crossorigin href="/cinenext-1/assets/admin-DMX_0khr.css">
   </head>
   <body>
     <main class="page">
       <header class="header">
         <h1>Livepeer 资产管理</h1>
-        <p>按剧统一管理 Livepeer 资产：显示总集数，按集数顺序排列，并支持编辑与删除。</p>
+        <p>按剧管理视频资产：支持播放、删除、按剧分组、按集排序。</p>
       </header>
 
       <section class="panel">
@@ -46,7 +46,7 @@
       </section>
 
       <section id="edit-panel" class="panel" hidden>
-        <h2>编辑资产元数据</h2>
+        <h2>编辑资产</h2>
         <form id="edit-form" class="form-grid">
           <label>
             Asset ID
@@ -68,11 +68,6 @@
             <input id="edit-episode-number" type="number" min="1" step="1" required />
           </label>
 
-          <label class="full-width">
-            metadata（JSON）
-            <textarea id="edit-metadata-json" rows="6"></textarea>
-          </label>
-
           <div class="actions">
             <button type="submit" id="edit-submit">保存修改</button>
             <button type="button" id="edit-cancel" class="secondary">取消编辑</button>
@@ -83,8 +78,8 @@
       <section class="panel">
         <h2>说明</h2>
         <p class="tip">1）首页只负责“按剧管理列表”，上传请点“上传视频”进入独立页面。</p>
-        <p class="tip">2）每条视频建议都写入 metadata：seriesName + episodeNumber。</p>
-        <p class="tip">3）列表会按剧名分组，并按集数从小到大排序。</p>
+        <p class="tip">2）当前不依赖 metadata，系统按资源名中的“第X集”自动分组与排序。</p>
+        <p class="tip">3）推荐命名：剧名 + 空格 + 第N集。</p>
       </section>
 
       <p id="toast" class="toast" aria-live="polite"></p>

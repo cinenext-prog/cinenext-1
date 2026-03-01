@@ -19,32 +19,12 @@ const editIdInput = document.querySelector('#edit-id');
 const editNameInput = document.querySelector('#edit-name');
 const editSeriesNameInput = document.querySelector('#edit-series-name');
 const editEpisodeNumberInput = document.querySelector('#edit-episode-number');
-const editMetadataJsonInput = document.querySelector('#edit-metadata-json');
 const editCancelBtn = document.querySelector('#edit-cancel');
-
-const seriesEditPanel = document.querySelector('#series-edit-panel');
-const seriesEditForm = document.querySelector('#series-edit-form');
-const seriesEditOriginalNameInput = document.querySelector('#series-edit-original-name');
-const seriesEditNameInput = document.querySelector('#series-edit-name');
-const seriesEditTotalEpisodesInput = document.querySelector('#series-edit-total-episodes');
-const seriesEditFreeEpisodesInput = document.querySelector('#series-edit-free-episodes');
-const seriesEditPriceInput = document.querySelector('#series-edit-price');
-const seriesEditActorsInput = document.querySelector('#series-edit-actors');
-const seriesEditDescriptionInput = document.querySelector('#series-edit-description');
-const seriesEditCancelBtn = document.querySelector('#series-edit-cancel');
 
 const toast = document.querySelector('#toast');
 
 let assets = [];
 const expandedSeries = new Set();
-
-const safeParse = (raw, fallback) => {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
-};
 
 const showToast = (text, isError = false) => {
   toast.textContent = text;
@@ -72,18 +52,6 @@ const toIsoTime = (value) => {
   ).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
 };
 
-const normalizeMetadata = (metadata) => {
-  if (!metadata) return {};
-  if (typeof metadata === 'string') {
-    const parsed = safeParse(metadata, {});
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  }
-  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
-    return metadata;
-  }
-  return {};
-};
-
 const parseEpisodeNumber = (value) => {
   const episode = Number(value);
   if (Number.isFinite(episode) && episode > 0) {
@@ -92,17 +60,27 @@ const parseEpisodeNumber = (value) => {
   return 0;
 };
 
-const parsePositiveInt = (value) => {
-  const output = Number(value);
-  if (!Number.isFinite(output) || output <= 0) return 0;
-  return Math.floor(output);
+const parseNameInfo = (name) => {
+  const text = String(name || '').trim();
+  const matched = text.match(/^(.*?)\s*第\s*(\d+)\s*集\s*(.*)$/i);
+
+  if (!matched) {
+    return {
+      seriesName: text || '未分组剧名',
+      episodeNumber: 9999,
+    };
+  }
+
+  const seriesName = String(matched[1] || '').trim() || '未分组剧名';
+  const episodeNumber = parseEpisodeNumber(matched[2]);
+
+  return {
+    seriesName,
+    episodeNumber: episodeNumber > 0 ? episodeNumber : 9999,
+  };
 };
 
-const guessEpisodeFromName = (name) => {
-  const match = String(name || '').match(/第\s*(\d+)\s*集/i);
-  if (!match) return 0;
-  return parseEpisodeNumber(match[1]);
-};
+const buildEpisodeName = (seriesName, episodeNumber) => `${String(seriesName || '').trim()} 第${episodeNumber}集`;
 
 const pickPlaybackId = (asset) => {
   if (asset.playbackId) return String(asset.playbackId);
@@ -111,43 +89,22 @@ const pickPlaybackId = (asset) => {
   return '';
 };
 
-const resolveSeriesName = (asset, metadata) => {
-  const fromMetadata =
-    String(metadata.seriesName || metadata.series || metadata.dramaName || metadata.title || '').trim();
-  if (fromMetadata) return fromMetadata;
-
-  const fromAssetName = String(asset.name || '').trim();
-  const fromNamePattern = fromAssetName.match(/^(.*?)(?:\s*第\s*\d+\s*集.*)$/i);
-  if (fromNamePattern?.[1]?.trim()) {
-    return fromNamePattern[1].trim();
-  }
-
-  return fromAssetName || '未分组剧名';
-};
-
-const resolveEpisodeNumber = (asset, metadata) => {
-  const fromMetadata = parseEpisodeNumber(metadata.episodeNumber || metadata.episode || metadata.ep);
-  if (fromMetadata > 0) return fromMetadata;
-
-  const fromName = guessEpisodeFromName(asset.name);
-  if (fromName > 0) return fromName;
-
-  return 9999;
-};
+const playbackUrlFromId = (playbackId) => `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
 
 const normalizeAsset = (asset) => {
-  const metadata = normalizeMetadata(asset.metadata);
-  const totalEpisodes = parsePositiveInt(metadata.totalEpisodes || metadata.totalEpisode || metadata.episodes);
+  const name = String(asset.name || '未命名资源');
+  const nameInfo = parseNameInfo(name);
+  const playbackId = pickPlaybackId(asset);
+
   return {
     id: String(asset.id || ''),
-    name: String(asset.name || '未命名资源'),
+    name,
     status: String(asset.status?.phase || asset.status || 'unknown'),
     createdAt: asset.createdAt || asset.created_at || '',
-    playbackId: pickPlaybackId(asset),
-    metadata,
-    seriesName: resolveSeriesName(asset, metadata),
-    episodeNumber: resolveEpisodeNumber(asset, metadata),
-    totalEpisodes,
+    playbackId,
+    playbackUrl: playbackId ? playbackUrlFromId(playbackId) : '',
+    seriesName: nameInfo.seriesName,
+    episodeNumber: nameInfo.episodeNumber,
   };
 };
 
@@ -172,7 +129,12 @@ const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
   });
 
   const text = await response.text();
-  const parsed = safeParse(text, null);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
 
   if (!response.ok) {
     const reason =
@@ -270,19 +232,7 @@ const clearEditForm = () => {
   editNameInput.value = '';
   editSeriesNameInput.value = '';
   editEpisodeNumberInput.value = '1';
-  editMetadataJsonInput.value = '';
   editPanel.hidden = true;
-};
-
-const clearSeriesEditForm = () => {
-  seriesEditOriginalNameInput.value = '';
-  seriesEditNameInput.value = '';
-  seriesEditTotalEpisodesInput.value = '1';
-  seriesEditFreeEpisodesInput.value = '0';
-  seriesEditPriceInput.value = '0.5';
-  seriesEditActorsInput.value = '';
-  seriesEditDescriptionInput.value = '';
-  seriesEditPanel.hidden = true;
 };
 
 const groupBySeries = (list) => {
@@ -304,33 +254,10 @@ const groupBySeries = (list) => {
         return String(left.createdAt).localeCompare(String(right.createdAt));
       });
 
-      const plannedTotal = sortedItems.reduce((maxValue, item) => Math.max(maxValue, item.totalEpisodes || 0), 0);
-
-      const seriesInfoSource =
-        sortedItems.find((item) => item.episodeNumber === 1) ||
-        sortedItems.find((item) => item.episodeNumber < 9999) ||
-        sortedItems[0];
-
-      const sourceMeta = seriesInfoSource?.metadata || {};
-      const freeEpisodes = Math.max(0, Number(sourceMeta.freeEpisodes || 0));
-      const defaultPrice = String(sourceMeta.price || '').trim();
-      const description = String(sourceMeta.seriesDescription || '').trim();
-      const actors = Array.isArray(sourceMeta.actors)
-        ? sourceMeta.actors.filter(Boolean).map((item) => String(item).trim())
-        : String(sourceMeta.actors || '')
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-
       return {
         seriesName,
         items: sortedItems,
         uploadedEpisodes: sortedItems.length,
-        plannedTotal,
-        freeEpisodes,
-        defaultPrice,
-        description,
-        actors,
       };
     })
     .sort((left, right) => left.seriesName.localeCompare(right.seriesName, 'zh-CN'));
@@ -356,6 +283,14 @@ const createEpisodeRow = (asset, index, total) => {
 
   const actionsTd = document.createElement('td');
   actionsTd.className = 'actions-cell';
+
+  const playBtn = document.createElement('button');
+  playBtn.type = 'button';
+  playBtn.className = 'secondary';
+  playBtn.dataset.action = 'play';
+  playBtn.dataset.id = asset.id;
+  playBtn.textContent = '播放';
+  playBtn.disabled = !asset.playbackUrl;
 
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
@@ -387,7 +322,7 @@ const createEpisodeRow = (asset, index, total) => {
   deleteBtn.dataset.id = asset.id;
   deleteBtn.textContent = '删除';
 
-  actionsTd.append(editBtn, upBtn, downBtn, deleteBtn);
+  actionsTd.append(playBtn, editBtn, upBtn, downBtn, deleteBtn);
   row.append(episodeTd, nameTd, statusTd, playbackTd, timeTd, actionsTd);
 
   return row;
@@ -408,7 +343,7 @@ const createSeriesCard = (group) => {
 
   const badge = document.createElement('span');
   badge.className = 'series-badge';
-  badge.textContent = group.plannedTotal > 0 ? `已上传 ${group.uploadedEpisodes} / ${group.plannedTotal} 集` : `共 ${group.uploadedEpisodes} 集`;
+  badge.textContent = `共 ${group.uploadedEpisodes} 集`;
 
   const toggleBtn = document.createElement('button');
   toggleBtn.type = 'button';
@@ -417,50 +352,15 @@ const createSeriesCard = (group) => {
   toggleBtn.dataset.series = seriesKey;
   toggleBtn.textContent = isExpanded ? '收起' : '展开';
 
-  const editSeriesBtn = document.createElement('button');
-  editSeriesBtn.type = 'button';
-  editSeriesBtn.className = 'secondary';
-  editSeriesBtn.dataset.action = 'edit-series';
-  editSeriesBtn.dataset.series = seriesKey;
-  editSeriesBtn.textContent = '编辑本剧';
-
   const right = document.createElement('div');
   right.className = 'series-actions';
-  right.append(badge, editSeriesBtn, toggleBtn);
+  right.append(badge, toggleBtn);
 
   header.append(title, right);
 
   const body = document.createElement('div');
   body.className = 'series-body';
   body.hidden = !isExpanded;
-
-  const infoGrid = document.createElement('div');
-  infoGrid.className = 'series-info-grid';
-
-  const infoItems = [
-    { label: '已上传集数', value: String(group.uploadedEpisodes) },
-    { label: '总集数', value: group.plannedTotal > 0 ? String(group.plannedTotal) : '-' },
-    { label: '前 X 集免费', value: String(group.freeEpisodes || 0) },
-    { label: '默认价格', value: group.defaultPrice ? `${group.defaultPrice} TON` : '-' },
-    { label: '演员', value: group.actors.length ? group.actors.join(' / ') : '-' },
-    { label: '简介', value: group.description || '-' },
-  ];
-
-  infoItems.forEach((item) => {
-    const block = document.createElement('div');
-    block.className = 'series-info-item';
-
-    const label = document.createElement('span');
-    label.className = 'series-info-label';
-    label.textContent = item.label;
-
-    const value = document.createElement('strong');
-    value.className = 'series-info-value';
-    value.textContent = item.value;
-
-    block.append(label, value);
-    infoGrid.appendChild(block);
-  });
 
   const table = document.createElement('table');
   table.className = 'table';
@@ -480,7 +380,7 @@ const createSeriesCard = (group) => {
   });
 
   table.append(thead, tbody);
-  body.append(infoGrid, table);
+  body.append(table);
   wrapper.append(header, body);
 
   return wrapper;
@@ -535,83 +435,8 @@ const openEdit = (id) => {
   editNameInput.value = target.name;
   editSeriesNameInput.value = target.seriesName || '';
   editEpisodeNumberInput.value = target.episodeNumber >= 9999 ? '1' : String(target.episodeNumber);
-  editMetadataJsonInput.value = JSON.stringify(target.metadata || {}, null, 2);
   editPanel.hidden = false;
   editPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
-
-const openSeriesEdit = (seriesName) => {
-  const grouped = groupBySeries(assets);
-  const target = grouped.find((group) => group.seriesName === seriesName);
-  if (!target) {
-    showToast('未找到该剧', true);
-    return;
-  }
-
-  seriesEditOriginalNameInput.value = target.seriesName;
-  seriesEditNameInput.value = target.seriesName;
-  seriesEditTotalEpisodesInput.value = String(target.plannedTotal || target.uploadedEpisodes || 1);
-  seriesEditFreeEpisodesInput.value = String(target.freeEpisodes || 0);
-  seriesEditPriceInput.value = target.defaultPrice || '0.5';
-  seriesEditActorsInput.value = target.actors.join(', ');
-  seriesEditDescriptionInput.value = target.description || '';
-  seriesEditPanel.hidden = false;
-  seriesEditPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
-
-const saveSeriesInfo = async () => {
-  const originalSeriesName = seriesEditOriginalNameInput.value.trim();
-  const nextSeriesName = seriesEditNameInput.value.trim();
-  const totalEpisodes = Math.max(1, Number(seriesEditTotalEpisodesInput.value || 1));
-  const freeEpisodes = Math.max(0, Number(seriesEditFreeEpisodesInput.value || 0));
-  const priceValue = Math.max(0, Number(seriesEditPriceInput.value || 0));
-  const actors = String(seriesEditActorsInput.value || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const description = String(seriesEditDescriptionInput.value || '').trim();
-
-  if (!originalSeriesName || !nextSeriesName) {
-    throw new Error('剧名不能为空');
-  }
-
-  const targets = assets
-    .filter((item) => item.seriesName === originalSeriesName)
-    .sort((left, right) => left.episodeNumber - right.episodeNumber || String(left.createdAt).localeCompare(String(right.createdAt)));
-
-  if (!targets.length) {
-    throw new Error('未找到该剧集资源');
-  }
-
-  for (let index = 0; index < targets.length; index += 1) {
-    const asset = targets[index];
-    const episodeNumber = asset.episodeNumber >= 9999 ? index + 1 : asset.episodeNumber;
-    const isFreeEpisode = episodeNumber <= freeEpisodes;
-
-    const nextMetadata = {
-      ...asset.metadata,
-      seriesName: nextSeriesName,
-      totalEpisodes,
-      freeEpisodes,
-      isFreeEpisode,
-      unlockType: isFreeEpisode ? 'free' : 'paid',
-      price: isFreeEpisode ? '0' : String(priceValue),
-      actors,
-      seriesDescription: description,
-    };
-
-    await requestLivepeer(`/asset/${encodeURIComponent(asset.id)}`, {
-      method: 'PATCH',
-      body: {
-        name: asset.name,
-        metadata: nextMetadata,
-      },
-    });
-  }
-
-  clearSeriesEditForm();
-  showToast(`已更新《${nextSeriesName}》的剧信息`);
-  await refreshAssets(false);
 };
 
 const deleteAsset = async (id) => {
@@ -659,27 +484,20 @@ const moveEpisode = async (id, direction) => {
   const currentEpisode = current.episodeNumber;
   const targetEpisode = target.episodeNumber;
 
+  const currentName = buildEpisodeName(current.seriesName, targetEpisode);
+  const targetName = buildEpisodeName(target.seriesName, currentEpisode);
+
   await requestLivepeer(`/asset/${encodeURIComponent(current.id)}`, {
     method: 'PATCH',
     body: {
-      name: current.name,
-      metadata: {
-        ...current.metadata,
-        seriesName: current.seriesName,
-        episodeNumber: targetEpisode,
-      },
+      name: currentName,
     },
   });
 
   await requestLivepeer(`/asset/${encodeURIComponent(target.id)}`, {
     method: 'PATCH',
     body: {
-      name: target.name,
-      metadata: {
-        ...target.metadata,
-        seriesName: target.seriesName,
-        episodeNumber: currentEpisode,
-      },
+      name: targetName,
     },
   });
 
@@ -687,24 +505,16 @@ const moveEpisode = async (id, direction) => {
     if (item.id === current.id) {
       return {
         ...item,
+        name: currentName,
         episodeNumber: targetEpisode,
-        metadata: {
-          ...item.metadata,
-          seriesName: item.seriesName,
-          episodeNumber: targetEpisode,
-        },
       };
     }
 
     if (item.id === target.id) {
       return {
         ...item,
+        name: targetName,
         episodeNumber: currentEpisode,
-        metadata: {
-          ...item.metadata,
-          seriesName: item.seriesName,
-          episodeNumber: currentEpisode,
-        },
       };
     }
 
@@ -788,16 +598,19 @@ seriesList.addEventListener('click', async (event) => {
     return;
   }
 
-  if (action === 'edit-series') {
-    const seriesKey = String(series || '').trim();
-    if (!seriesKey) return;
-    openSeriesEdit(seriesKey);
-    return;
-  }
-
   if (!id) return;
 
   try {
+    if (action === 'play') {
+      const item = assets.find((asset) => asset.id === id);
+      if (!item?.playbackUrl) {
+        showToast('该资源暂无可用播放地址', true);
+        return;
+      }
+      window.open(item.playbackUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     if (action === 'edit') {
       openEdit(id);
       return;
@@ -825,31 +638,12 @@ editCancelBtn.addEventListener('click', () => {
   clearEditForm();
 });
 
-seriesEditCancelBtn.addEventListener('click', () => {
-  clearSeriesEditForm();
-});
-
-seriesEditForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  try {
-    await saveSeriesInfo();
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '保存本剧信息失败', true);
-  }
-});
-
 editForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const id = editIdInput.value.trim();
   if (!id) {
     showToast('缺少 asset id', true);
-    return;
-  }
-
-  const name = editNameInput.value.trim();
-  if (!name) {
-    showToast('资源名称不能为空', true);
     return;
   }
 
@@ -860,22 +654,13 @@ editForm.addEventListener('submit', async (event) => {
   }
 
   const episodeNumber = Math.max(1, Number(editEpisodeNumberInput.value || 1));
-
-  const metadata = safeParse(editMetadataJsonInput.value.trim() || '{}', null);
-  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    showToast('metadata 必须是 JSON 对象', true);
-    return;
-  }
-
-  metadata.seriesName = seriesName;
-  metadata.episodeNumber = episodeNumber;
+  const nextName = buildEpisodeName(seriesName, episodeNumber);
 
   try {
     await requestLivepeer(`/asset/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: {
-        name,
-        metadata,
+        name: nextName,
       },
     });
 
