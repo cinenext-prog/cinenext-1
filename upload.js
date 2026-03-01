@@ -20,7 +20,6 @@ const seriesStatus = document.querySelector('#series-status');
 const uploadForm = document.querySelector('#upload-form');
 const uploadSeriesSelect = document.querySelector('#upload-series-select');
 const episodeNumberInput = document.querySelector('#episode-number');
-const uploadNameInput = document.querySelector('#upload-name');
 const uploadFileInput = document.querySelector('#upload-file');
 const uploadResetBtn = document.querySelector('#upload-reset');
 const uploadProgress = document.querySelector('#upload-progress');
@@ -471,18 +470,13 @@ uploadForm.addEventListener('submit', async (event) => {
     return;
   }
 
-  const namePrefix = uploadNameInput.value.trim();
-
   try {
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
       const episodeNumber = startEpisode + index;
       episodeNumberInput.value = String(episodeNumber);
       const metadata = buildMetadata(selectedSeries, episodeNumber);
-      const uploadName =
-        files.length === 1 && namePrefix
-          ? namePrefix
-          : `${namePrefix || selectedSeries.seriesName} 第${episodeNumber}集`;
+      const uploadName = `${selectedSeries.seriesName} 第${episodeNumber}集`;
 
       setUploadProgress(`准备上传 ${index + 1}/${files.length}：第 ${episodeNumber} 集`);
       await requestUpload({ file, name: uploadName, metadata });
@@ -505,7 +499,6 @@ uploadForm.addEventListener('submit', async (event) => {
     showToast(`上传成功，共完成 ${files.length} 个文件`);
 
     uploadFileInput.value = '';
-    uploadNameInput.value = '';
     clearUploadQueue();
     renderQueuePreview();
   } catch (error) {
