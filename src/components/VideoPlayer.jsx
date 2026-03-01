@@ -14,11 +14,11 @@ const VideoPlayer = ({
   blocked,
   lockLabel,
   onUnlock,
-  onPlaybackState,
 }) => {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const longPressTimerRef = useRef(null);
+  const autoplayRetryTimerRef = useRef(null);
 
   const [isPaused, setIsPaused] = useState(false);
   const [showSpeedSheet, setShowSpeedSheet] = useState(false);
@@ -55,7 +55,11 @@ const VideoPlayer = ({
 
     tryPlay();
 
-    window.setTimeout(() => {
+    if (autoplayRetryTimerRef.current) {
+      window.clearTimeout(autoplayRetryTimerRef.current);
+    }
+
+    autoplayRetryTimerRef.current = window.setTimeout(() => {
       if (video.paused) {
         tryPlay();
       }
@@ -167,11 +171,9 @@ const VideoPlayer = ({
     const handlePlay = () => {
       setIsPaused(false);
       setNeedUserStart(false);
-      onPlaybackState?.(true);
     };
     const handlePause = () => {
       setIsPaused(true);
-      onPlaybackState?.(false);
     };
     const handleCanPlay = () => {
       attemptAutoplay();
@@ -203,7 +205,7 @@ const VideoPlayer = ({
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('error', handleError);
     };
-  }, [onPlaybackState, active, blocked]);
+  }, [active, blocked]);
 
   const togglePause = () => {
     const video = videoRef.current;
@@ -273,6 +275,9 @@ const VideoPlayer = ({
   useEffect(() => {
     return () => {
       clearLongPress();
+      if (autoplayRetryTimerRef.current) {
+        window.clearTimeout(autoplayRetryTimerRef.current);
+      }
     };
   }, []);
 
@@ -325,7 +330,7 @@ const VideoPlayer = ({
       )}
 
       {!playError && needUserStart && active && !blocked && (
-        <div className="start-overlay" onClick={handleUserStart}>
+        <div className="start-overlay">
           <button type="button" onClick={handleUserStart}>点击开始播放</button>
         </div>
       )}

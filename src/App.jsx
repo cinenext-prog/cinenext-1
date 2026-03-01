@@ -17,6 +17,7 @@ const LOCAL_VIDEO_KEYS = [
   'cinenext_videos',
   'cinenext_admin_videos',
 ];
+const LOCAL_VIDEO_KEY_SET = new Set(LOCAL_VIDEO_KEYS);
 
 const safeGet = (key, fallback) => {
   try {
@@ -170,6 +171,7 @@ function App() {
 
   const feedRef = useRef(null);
   const pendingScrollIndexRef = useRef(null);
+  const scrollRafRef = useRef(0);
 
   const activeVideo = videos[activeIndex] || null;
 
@@ -301,8 +303,13 @@ function App() {
         const nextVideos = [...remoteMap.values(), ...legacyVideos];
 
         if (!cancelled) {
+          const currentId = videos[activeIndex]?.id;
+          const nextIndex = currentId
+            ? Math.max(0, nextVideos.findIndex((video) => video.id === currentId))
+            : 0;
+
           setVideos(nextVideos);
-          setActiveIndex(0);
+          setActiveIndex(nextIndex);
           if (nextVideos.length === 0) {
             setLoadError(remoteError || '暂无可播放内容，请配置 Livepeer API Key 或先添加资源。');
           }
@@ -331,7 +338,7 @@ function App() {
     };
 
     const onStorage = (event) => {
-      if (!event.key || event.key === STORAGE_KEYS.legacyVideos) {
+      if (!event.key || LOCAL_VIDEO_KEY_SET.has(event.key)) {
         requestReload();
       }
     };
@@ -539,16 +546,26 @@ function App() {
       return;
     }
 
-    const { scrollTop, clientHeight } = feedRef.current;
-    if (clientHeight <= 0) {
+    if (scrollRafRef.current) {
       return;
     }
 
-    const nextIndex = Math.round(scrollTop / clientHeight);
-    const safeIndex = Math.min(videos.length - 1, Math.max(0, nextIndex));
-    if (safeIndex !== activeIndex) {
-      setActiveIndex(safeIndex);
-    }
+    scrollRafRef.current = window.requestAnimationFrame(() => {
+      scrollRafRef.current = 0;
+
+      if (!feedRef.current) {
+        return;
+      }
+
+      const { scrollTop, clientHeight } = feedRef.current;
+      if (clientHeight <= 0) {
+        return;
+      }
+
+      const nextIndex = Math.round(scrollTop / clientHeight);
+      const safeIndex = Math.min(videos.length - 1, Math.max(0, nextIndex));
+      setActiveIndex((prev) => (prev === safeIndex ? prev : safeIndex));
+    });
   };
 
   const navigateToHomeVideo = (videoId, keyword = '') => {
@@ -578,6 +595,14 @@ function App() {
     });
     pendingScrollIndexRef.current = null;
   }, [page]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current) {
+        window.cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
 
   const openSearch = () => {
     setPage('search');
