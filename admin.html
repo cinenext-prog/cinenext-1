@@ -10,7 +10,7 @@
     <main class="page">
       <header class="header">
         <h1>Livepeer 资产管理</h1>
-        <p>纯前端管理后台：直接调用 Livepeer API，支持上传、编辑元数据、删除与刷新列表。</p>
+        <p>按剧统一管理 Livepeer 资产：显示总集数，按集数顺序排列，并支持编辑与删除。</p>
       </header>
 
       <section class="panel">
@@ -30,92 +30,17 @@
       </section>
 
       <section class="panel">
-        <h2>上传视频</h2>
-        <form id="upload-form" class="form-grid">
-          <label>
-            资源名称
-            <input id="upload-name" required placeholder="例如：总裁的替身新娘 第1集" />
-          </label>
-
-          <label>
-            视频文件
-            <input id="upload-file" type="file" accept="video/*" required />
-          </label>
-
-          <label>
-            描述（可选）
-            <input id="upload-description" placeholder="例如：第 1 集，甜宠" />
-          </label>
-
-          <label>
-            分类（可选）
-            <input id="upload-category" placeholder="例如：甜宠" />
-          </label>
-
-          <label>
-            解锁类型
-            <select id="upload-unlock-type">
-              <option value="free">免费</option>
-              <option value="nft">NFT 解锁</option>
-            </select>
-          </label>
-
-          <label>
-            NFT 合约地址（可选）
-            <input id="upload-nft-address" placeholder="仅 NFT 解锁时填写" />
-          </label>
-
-          <label>
-            价格 TON（可选）
-            <input id="upload-price" type="number" min="0" step="0.1" value="0.5" />
-          </label>
-
-          <label class="checkbox-label">
-            <span>上传为加密资产</span>
-            <input id="upload-encrypted" type="checkbox" />
-          </label>
-
-          <label class="full-width">
-            额外 metadata（JSON，可选）
-            <textarea
-              id="upload-metadata-json"
-              rows="4"
-              placeholder='例如：{"series":"总裁的替身新娘","episode":"1"}'
-            ></textarea>
-          </label>
-
-          <div class="actions">
-            <button type="submit" id="upload-submit">开始上传</button>
-            <button type="button" id="upload-reset" class="secondary">清空上传表单</button>
-          </div>
-        </form>
-        <p id="upload-progress" class="tip">等待上传。</p>
-      </section>
-
-      <section class="panel">
         <div class="list-head">
-          <h2>资产列表</h2>
+          <h2>剧集列表</h2>
           <div class="actions-row">
             <input id="search-input" placeholder="按名称/Playback ID 搜索" />
             <button id="refresh-list" class="secondary">刷新列表</button>
+            <button id="go-upload">上传视频</button>
           </div>
         </div>
 
-        <div id="empty-state" class="empty">当前没有资产，请先连接并上传。</div>
-
-        <table id="video-table" class="table" hidden>
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>状态</th>
-              <th>Playback ID</th>
-              <th>创建时间</th>
-              <th>核心 metadata</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="video-tbody"></tbody>
-        </table>
+        <div id="empty-state" class="empty">当前没有资产，请先连接后点击“上传视频”。</div>
+        <div id="series-list" class="series-list"></div>
       </section>
 
       <section id="edit-panel" class="panel" hidden>
@@ -129,6 +54,16 @@
           <label>
             资源名称
             <input id="edit-name" required />
+          </label>
+
+          <label>
+            剧名（seriesName）
+            <input id="edit-series-name" required placeholder="例如：总裁的替身新娘" />
+          </label>
+
+          <label>
+            集数（episodeNumber）
+            <input id="edit-episode-number" type="number" min="1" step="1" required />
           </label>
 
           <label class="full-width">
@@ -145,9 +80,9 @@
 
       <section class="panel">
         <h2>说明</h2>
-        <p class="tip">1）当前版本按你的要求：不做域名白名单，直接前端调用 API。</p>
-        <p class="tip">2）如果上传成功但列表没立刻显示，等待 Livepeer 处理后点击“刷新列表”。</p>
-        <p class="tip">3）metadata 建议包含：nftCollectionAddress、price、category、unlockType。</p>
+        <p class="tip">1）首页只负责“按剧管理列表”，上传请点“上传视频”进入独立页面。</p>
+        <p class="tip">2）每条视频建议都写入 metadata：seriesName + episodeNumber。</p>
+        <p class="tip">3）列表会按剧名分组，并按集数从小到大排序。</p>
       </section>
 
       <p id="toast" class="toast" aria-live="polite"></p>

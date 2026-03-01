@@ -7,29 +7,18 @@ const connectBtn = document.querySelector('#connect-api');
 const clearKeyBtn = document.querySelector('#clear-key');
 const apiStatus = document.querySelector('#api-status');
 
-const uploadForm = document.querySelector('#upload-form');
-const uploadNameInput = document.querySelector('#upload-name');
-const uploadFileInput = document.querySelector('#upload-file');
-const uploadDescriptionInput = document.querySelector('#upload-description');
-const uploadCategoryInput = document.querySelector('#upload-category');
-const uploadUnlockTypeInput = document.querySelector('#upload-unlock-type');
-const uploadNftAddressInput = document.querySelector('#upload-nft-address');
-const uploadPriceInput = document.querySelector('#upload-price');
-const uploadEncryptedInput = document.querySelector('#upload-encrypted');
-const uploadMetadataJsonInput = document.querySelector('#upload-metadata-json');
-const uploadResetBtn = document.querySelector('#upload-reset');
-const uploadProgress = document.querySelector('#upload-progress');
-
+const goUploadBtn = document.querySelector('#go-upload');
 const searchInput = document.querySelector('#search-input');
 const refreshBtn = document.querySelector('#refresh-list');
-const table = document.querySelector('#video-table');
-const tbody = document.querySelector('#video-tbody');
 const emptyState = document.querySelector('#empty-state');
+const seriesList = document.querySelector('#series-list');
 
 const editPanel = document.querySelector('#edit-panel');
 const editForm = document.querySelector('#edit-form');
 const editIdInput = document.querySelector('#edit-id');
 const editNameInput = document.querySelector('#edit-name');
+const editSeriesNameInput = document.querySelector('#edit-series-name');
+const editEpisodeNumberInput = document.querySelector('#edit-episode-number');
 const editMetadataJsonInput = document.querySelector('#edit-metadata-json');
 const editCancelBtn = document.querySelector('#edit-cancel');
 
@@ -83,11 +72,44 @@ const normalizeMetadata = (metadata) => {
   return {};
 };
 
+const parseEpisodeNumber = (value) => {
+  const episode = Number(value);
+  if (Number.isFinite(episode) && episode > 0) {
+    return Math.floor(episode);
+  }
+  return 0;
+};
+
+const guessEpisodeFromName = (name) => {
+  const match = String(name || '').match(/第\s*(\d+)\s*集/i);
+  if (!match) return 0;
+  return parseEpisodeNumber(match[1]);
+};
+
 const pickPlaybackId = (asset) => {
   if (asset.playbackId) return String(asset.playbackId);
   if (Array.isArray(asset.playbackIds) && asset.playbackIds[0]?.id) return String(asset.playbackIds[0].id);
   if (Array.isArray(asset.playbackIds) && typeof asset.playbackIds[0] === 'string') return asset.playbackIds[0];
   return '';
+};
+
+const resolveSeriesName = (asset, metadata) => {
+  const fromMetadata =
+    String(metadata.seriesName || metadata.series || metadata.dramaName || metadata.title || '').trim();
+  if (fromMetadata) return fromMetadata;
+
+  const fromAssetName = String(asset.name || '').trim();
+  return fromAssetName || '未分组剧名';
+};
+
+const resolveEpisodeNumber = (asset, metadata) => {
+  const fromMetadata = parseEpisodeNumber(metadata.episodeNumber || metadata.episode || metadata.ep);
+  if (fromMetadata > 0) return fromMetadata;
+
+  const fromName = guessEpisodeFromName(asset.name);
+  if (fromName > 0) return fromName;
+
+  return 9999;
 };
 
 const normalizeAsset = (asset) => {
@@ -99,7 +121,8 @@ const normalizeAsset = (asset) => {
     createdAt: asset.createdAt || asset.created_at || '',
     playbackId: pickPlaybackId(asset),
     metadata,
-    raw: asset,
+    seriesName: resolveSeriesName(asset, metadata),
+    episodeNumber: resolveEpisodeNumber(asset, metadata),
   };
 };
 
@@ -217,156 +240,148 @@ const listAssets = async () => {
   return unique;
 };
 
-const toMetaPreview = (metadata) => {
-  const values = [];
-  const keys = ['unlockType', 'nftCollectionAddress', 'price', 'category'];
-  keys.forEach((key) => {
-    if (metadata?.[key] !== undefined && metadata?.[key] !== '') {
-      values.push(`${key}: ${metadata[key]}`);
-    }
-  });
-  if (values.length === 0) {
-    return '-';
-  }
-  return values.join(' | ');
-};
-
-const setUploadProgress = (text, isError = false) => {
-  uploadProgress.textContent = text;
-  uploadProgress.style.color = isError ? '#ff9d9d' : '#97a2bb';
-};
-
 const clearEditForm = () => {
   editIdInput.value = '';
   editNameInput.value = '';
+  editSeriesNameInput.value = '';
+  editEpisodeNumberInput.value = '1';
   editMetadataJsonInput.value = '';
   editPanel.hidden = true;
 };
 
-const buildMetadataFromUploadForm = () => {
-  const unlockType = uploadUnlockTypeInput.value === 'nft' ? 'nft' : 'free';
-  const metadata = {
-    unlockType,
-    category: uploadCategoryInput.value.trim(),
-    description: uploadDescriptionInput.value.trim(),
-    nftCollectionAddress: unlockType === 'nft' ? uploadNftAddressInput.value.trim() : '',
-    price: String(uploadPriceInput.value || '0.5').trim(),
-  };
-
-  const extras = safeParse(uploadMetadataJsonInput.value.trim() || '{}', null);
-  if (extras === null || typeof extras !== 'object' || Array.isArray(extras)) {
-    throw new Error('额外 metadata 必须是 JSON 对象');
-  }
-
-  Object.entries(extras).forEach(([key, value]) => {
-    metadata[key] = value;
+const groupBySeries = (list) => {
+  const groups = new Map();
+  list.forEach((asset) => {
+    const key = String(asset.seriesName || '未分组剧名').trim() || '未分组剧名';
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(asset);
   });
 
-  return metadata;
+  return Array.from(groups.entries())
+    .map(([seriesName, items]) => {
+      const sortedItems = [...items].sort((left, right) => {
+        if (left.episodeNumber !== right.episodeNumber) {
+          return left.episodeNumber - right.episodeNumber;
+        }
+        return String(left.createdAt).localeCompare(String(right.createdAt));
+      });
+
+      return {
+        seriesName,
+        items: sortedItems,
+        totalEpisodes: sortedItems.length,
+      };
+    })
+    .sort((left, right) => left.seriesName.localeCompare(right.seriesName, 'zh-CN'));
 };
 
-const uploadByTus = async ({ file, name, metadata }) => {
-  const apiKey = readApiKey();
-  if (!apiKey) {
-    throw new Error('请先填写 API Key');
-  }
+const createEpisodeRow = (asset) => {
+  const row = document.createElement('tr');
 
-  const tusModule = await import('https://esm.sh/tus-js-client@4.3.1');
-  const tus = tusModule.default || tusModule;
+  const episodeTd = document.createElement('td');
+  episodeTd.textContent = asset.episodeNumber >= 9999 ? '-' : String(asset.episodeNumber);
 
-  const uploadMetadata = {
-    filename: file.name,
-    filetype: file.type || 'video/mp4',
-    name,
-    encrypted: uploadEncryptedInput.checked ? 'true' : 'false',
-  };
+  const nameTd = document.createElement('td');
+  nameTd.textContent = asset.name;
 
-  Object.entries(metadata).forEach(([key, value]) => {
-    if (value === undefined || value === null) return;
-    uploadMetadata[key] = typeof value === 'string' ? value : JSON.stringify(value);
+  const statusTd = document.createElement('td');
+  statusTd.textContent = asset.status;
+
+  const playbackTd = document.createElement('td');
+  playbackTd.textContent = asset.playbackId || '-';
+
+  const timeTd = document.createElement('td');
+  timeTd.textContent = toIsoTime(asset.createdAt);
+
+  const actionsTd = document.createElement('td');
+  actionsTd.className = 'actions-cell';
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'secondary';
+  editBtn.dataset.action = 'edit';
+  editBtn.dataset.id = asset.id;
+  editBtn.textContent = '编辑';
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'danger';
+  deleteBtn.dataset.action = 'delete';
+  deleteBtn.dataset.id = asset.id;
+  deleteBtn.textContent = '删除';
+
+  actionsTd.append(editBtn, deleteBtn);
+  row.append(episodeTd, nameTd, statusTd, playbackTd, timeTd, actionsTd);
+
+  return row;
+};
+
+const createSeriesCard = (group) => {
+  const wrapper = document.createElement('article');
+  wrapper.className = 'series-card';
+
+  const header = document.createElement('div');
+  header.className = 'series-header';
+
+  const title = document.createElement('h3');
+  title.textContent = group.seriesName;
+
+  const badge = document.createElement('span');
+  badge.className = 'series-badge';
+  badge.textContent = `共 ${group.totalEpisodes} 集`;
+
+  header.append(title, badge);
+
+  const table = document.createElement('table');
+  table.className = 'table';
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  ['集数', '资源名称', '状态', 'Playback ID', '创建时间', '操作'].forEach((text) => {
+    const th = document.createElement('th');
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+
+  const tbody = document.createElement('tbody');
+  group.items.forEach((asset) => {
+    tbody.appendChild(createEpisodeRow(asset));
   });
 
-  return new Promise((resolve, reject) => {
-    const upload = new tus.Upload(file, {
-      endpoint: `${LIVEPEER_API_BASE}/asset/upload/direct`,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      retryDelays: [0, 1000, 3000, 5000],
-      metadata: uploadMetadata,
-      onError: (error) => {
-        reject(error instanceof Error ? error : new Error('上传失败'));
-      },
-      onProgress: (uploaded, total) => {
-        const progress = total > 0 ? ((uploaded / total) * 100).toFixed(1) : '0.0';
-        setUploadProgress(`上传中：${progress}%`);
-      },
-      onSuccess: () => {
-        resolve({ uploadUrl: upload.url || '' });
-      },
-    });
+  table.append(thead, tbody);
+  wrapper.append(header, table);
 
-    upload.start();
-  });
+  return wrapper;
 };
 
 const render = () => {
   const query = searchInput.value.trim().toLowerCase();
-  const filtered = assets.filter((item) => {
+  const filtered = assets.filter((asset) => {
     if (!query) return true;
-    return item.name.toLowerCase().includes(query) || item.playbackId.toLowerCase().includes(query);
+    return (
+      asset.name.toLowerCase().includes(query) ||
+      asset.playbackId.toLowerCase().includes(query) ||
+      asset.seriesName.toLowerCase().includes(query) ||
+      String(asset.episodeNumber).includes(query)
+    );
   });
 
-  tbody.innerHTML = '';
+  seriesList.innerHTML = '';
 
   if (filtered.length === 0) {
-    table.hidden = true;
     emptyState.hidden = false;
-    emptyState.textContent = assets.length === 0 ? '当前没有资产，请先连接并上传。' : '没有匹配的搜索结果。';
+    emptyState.textContent = assets.length === 0 ? '当前没有资产，请先连接后点击“上传视频”。' : '没有匹配的搜索结果。';
     return;
   }
 
-  table.hidden = false;
   emptyState.hidden = true;
 
-  filtered.forEach((asset) => {
-    const tr = document.createElement('tr');
-
-    const nameTd = document.createElement('td');
-    nameTd.textContent = asset.name;
-
-    const statusTd = document.createElement('td');
-    statusTd.textContent = asset.status;
-
-    const playbackTd = document.createElement('td');
-    playbackTd.textContent = asset.playbackId || '-';
-
-    const timeTd = document.createElement('td');
-    timeTd.textContent = toIsoTime(asset.createdAt);
-
-    const metadataTd = document.createElement('td');
-    metadataTd.textContent = toMetaPreview(asset.metadata);
-
-    const actionsTd = document.createElement('td');
-    actionsTd.className = 'actions-cell';
-
-    const editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.className = 'secondary';
-    editBtn.dataset.action = 'edit';
-    editBtn.dataset.id = asset.id;
-    editBtn.textContent = '编辑';
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'danger';
-    deleteBtn.dataset.action = 'delete';
-    deleteBtn.dataset.id = asset.id;
-    deleteBtn.textContent = '删除';
-
-    actionsTd.append(editBtn, deleteBtn);
-    tr.append(nameTd, statusTd, playbackTd, timeTd, metadataTd, actionsTd);
-    tbody.appendChild(tr);
+  const grouped = groupBySeries(filtered);
+  grouped.forEach((group) => {
+    seriesList.appendChild(createSeriesCard(group));
   });
 };
 
@@ -389,6 +404,8 @@ const openEdit = (id) => {
 
   editIdInput.value = target.id;
   editNameInput.value = target.name;
+  editSeriesNameInput.value = target.seriesName || '';
+  editEpisodeNumberInput.value = target.episodeNumber >= 9999 ? '1' : String(target.episodeNumber);
   editMetadataJsonInput.value = JSON.stringify(target.metadata || {}, null, 2);
   editPanel.hidden = false;
   editPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -452,56 +469,15 @@ refreshBtn.addEventListener('click', async () => {
   }
 });
 
+goUploadBtn.addEventListener('click', () => {
+  window.location.href = 'upload.html';
+});
+
 searchInput.addEventListener('input', () => {
   render();
 });
 
-uploadForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const file = uploadFileInput.files?.[0];
-
-  if (!file) {
-    showToast('请选择视频文件', true);
-    return;
-  }
-
-  const name = uploadNameInput.value.trim();
-  if (!name) {
-    showToast('请输入资源名称', true);
-    return;
-  }
-
-  try {
-    const metadata = buildMetadataFromUploadForm();
-    setUploadProgress('初始化上传...');
-    await uploadByTus({ file, name, metadata });
-    setUploadProgress('上传完成，正在等待 Livepeer 处理...');
-    showToast('上传成功，请稍等后刷新列表');
-
-    uploadForm.reset();
-    uploadPriceInput.value = '0.5';
-
-    window.setTimeout(async () => {
-      try {
-        await refreshAssets(false);
-        setUploadProgress('已刷新列表。');
-      } catch {
-        setUploadProgress('上传成功，自动刷新失败，请手动点击“刷新列表”。', true);
-      }
-    }, 1800);
-  } catch (error) {
-    setUploadProgress('上传失败。', true);
-    showToast(error instanceof Error ? error.message : '上传失败', true);
-  }
-});
-
-uploadResetBtn.addEventListener('click', () => {
-  uploadForm.reset();
-  uploadPriceInput.value = '0.5';
-  setUploadProgress('已清空上传表单。');
-});
-
-tbody.addEventListener('click', async (event) => {
+seriesList.addEventListener('click', async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
 
@@ -541,11 +517,22 @@ editForm.addEventListener('submit', async (event) => {
     return;
   }
 
+  const seriesName = editSeriesNameInput.value.trim();
+  if (!seriesName) {
+    showToast('剧名不能为空', true);
+    return;
+  }
+
+  const episodeNumber = Math.max(1, Number(editEpisodeNumberInput.value || 1));
+
   const metadata = safeParse(editMetadataJsonInput.value.trim() || '{}', null);
   if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) {
     showToast('metadata 必须是 JSON 对象', true);
     return;
   }
+
+  metadata.seriesName = seriesName;
+  metadata.episodeNumber = episodeNumber;
 
   try {
     await requestLivepeer(`/asset/${encodeURIComponent(id)}`, {
@@ -567,7 +554,6 @@ editForm.addEventListener('submit', async (event) => {
 const bootstrap = async () => {
   const cachedKey = localStorage.getItem(API_KEY_STORAGE) || '';
   apiKeyInput.value = cachedKey;
-  uploadPriceInput.value = '0.5';
 
   if (!cachedKey) {
     setApiStatus('尚未连接。');

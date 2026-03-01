@@ -79,6 +79,18 @@ button {
   border-color: #2f67ff;
 }
 
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 8px;
+  border: 1px solid #39435b;
+  padding: 10px 12px;
+  color: #e7ecf8;
+  background: #252c3c;
+  font-size: 14px;
+}
+
 button.secondary,
 .import-btn {
   background: #252c3c;
@@ -147,6 +159,41 @@ button.danger {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.series-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.series-card {
+  border: 1px solid #2a3040;
+  border-radius: 10px;
+  background: #141924;
+  padding: 10px;
+}
+
+.series-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.series-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.series-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid #39435b;
+  color: #cfd6e6;
+  font-size: 12px;
 }
 
 .empty {

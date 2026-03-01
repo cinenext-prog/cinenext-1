@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CineNext 视频上传</title>
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <h1>上传视频</h1>
+        <p>独立上传页面：填写剧名与集数后上传，回到管理首页会自动按剧分组显示。</p>
+      </header>
+
+      <section class="panel">
+        <h2>API 连接</h2>
+        <div class="inline-row">
+          <label class="inline-input">
+            Livepeer API Key
+            <input id="api-key" type="password" placeholder="请输入 Livepeer API Key" autocomplete="off" />
+          </label>
+          <div class="actions-row">
+            <button type="button" id="save-key" class="secondary">保存到本地</button>
+            <button type="button" id="clear-key" class="danger">清除 Key</button>
+            <a href="admin.html" class="link-btn secondary">返回资产列表</a>
+          </div>
+        </div>
+        <p id="api-status" class="tip">尚未连接。</p>
+      </section>
+
+      <section class="panel">
+        <h2>上传表单</h2>
+        <form id="upload-form" class="form-grid">
+          <label>
+            剧名（seriesName）
+            <input id="series-name" required placeholder="例如：总裁的替身新娘" />
+          </label>
+
+          <label>
+            集数（episodeNumber）
+            <input id="episode-number" type="number" min="1" step="1" required value="1" />
+          </label>
+
+          <label>
+            资源名称（可选）
+            <input id="upload-name" placeholder="不填则自动生成：剧名 第X集" />
+          </label>
+
+          <label>
+            视频文件
+            <input id="upload-file" type="file" accept="video/*" required />
+          </label>
+
+          <label>
+            描述（可选）
+            <input id="upload-description" placeholder="例如：第 1 集，甜宠" />
+          </label>
+
+          <label>
+            分类（可选）
+            <input id="upload-category" placeholder="例如：甜宠" />
+          </label>
+
+          <label>
+            解锁类型
+            <select id="upload-unlock-type">
+              <option value="free">免费</option>
+              <option value="nft">NFT 解锁</option>
+            </select>
+          </label>
+
+          <label>
+            NFT 合约地址（可选）
+            <input id="upload-nft-address" placeholder="仅 NFT 解锁时填写" />
+          </label>
+
+          <label>
+            价格 TON（可选）
+            <input id="upload-price" type="number" min="0" step="0.1" value="0.5" />
+          </label>
+
+          <label class="checkbox-label">
+            <span>上传为加密资产</span>
+            <input id="upload-encrypted" type="checkbox" />
+          </label>
+
+          <label class="full-width">
+            额外 metadata（JSON，可选）
+            <textarea id="upload-metadata-json" rows="4" placeholder='例如：{"season":"1"}'></textarea>
+          </label>
+
+          <div class="actions">
+            <button type="submit" id="upload-submit">开始上传</button>
+            <button type="button" id="upload-reset" class="secondary">清空上传表单</button>
+          </div>
+        </form>
+
+        <p id="upload-progress" class="tip">等待上传。</p>
+      </section>
+
+      <p id="toast" class="toast" aria-live="polite"></p>
+    </main>
+
+    <script type="module" src="/upload.js"></script>
+  </body>
+</html>

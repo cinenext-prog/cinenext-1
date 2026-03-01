@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 const htmlInputs = {
   main: '/index.html',
   admin: '/admin.html',
+  upload: '/upload.html',
 };
 
 export default defineConfig({
