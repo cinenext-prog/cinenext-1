@@ -57,6 +57,7 @@ label {
 }
 
 input,
+textarea,
 select,
 button {
   border-radius: 8px;
@@ -65,6 +66,11 @@ button {
   color: #eef1f7;
   padding: 10px;
   font-size: 14px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 92px;
 }
 
 button {
@@ -89,6 +95,7 @@ button.danger {
   grid-column: 1 / -1;
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .list-head,
@@ -97,6 +104,29 @@ button.danger {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inline-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.inline-input {
+  flex: 1;
+  min-width: 280px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.checkbox-label {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .table {
@@ -116,6 +146,7 @@ button.danger {
 .table td.actions-cell {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .empty {
@@ -144,8 +175,17 @@ button.danger {
   font-size: 13px;
 }
 
+#api-key,
+#search-input {
+  min-width: 220px;
+}
+
 @media (max-width: 760px) {
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .list-head {
+    align-items: flex-start;
   }
 }

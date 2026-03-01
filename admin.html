@@ -3,42 +3,58 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CineNext 剧集管理</title>
+    <title>CineNext Livepeer 管理后台</title>
     <link rel="stylesheet" href="/admin.css" />
   </head>
   <body>
     <main class="page">
       <header class="header">
-        <h1>短剧管理页面</h1>
-        <p>在网页里维护短剧列表，保存后写入浏览器本地存储（键名：cinenext_videos）。</p>
+        <h1>Livepeer 资产管理</h1>
+        <p>纯前端管理后台：直接调用 Livepeer API，支持上传、编辑元数据、删除与刷新列表。</p>
       </header>
 
       <section class="panel">
-        <h2 id="form-title">新增短剧</h2>
-        <form id="video-form" class="form-grid">
+        <h2>API 连接</h2>
+        <div class="inline-row">
+          <label class="inline-input">
+            Livepeer API Key
+            <input id="api-key" type="password" placeholder="请输入 Livepeer API Key" autocomplete="off" />
+          </label>
+          <div class="actions-row">
+            <button type="button" id="save-key" class="secondary">保存到本地</button>
+            <button type="button" id="connect-api">连接并拉取</button>
+            <button type="button" id="clear-key" class="danger">清除 Key</button>
+          </div>
+        </div>
+        <p id="api-status" class="tip">尚未连接。</p>
+      </section>
+
+      <section class="panel">
+        <h2>上传视频</h2>
+        <form id="upload-form" class="form-grid">
           <label>
-            剧名
-            <input id="title" required placeholder="例如：总裁的替身新娘" />
+            资源名称
+            <input id="upload-name" required placeholder="例如：总裁的替身新娘 第1集" />
           </label>
 
           <label>
-            Playback ID
-            <input id="playbackId" required placeholder="例如：abcd1234efgh" />
+            视频文件
+            <input id="upload-file" type="file" accept="video/*" required />
           </label>
 
           <label>
-            播放地址（可选）
-            <input id="playbackUrl" placeholder="例如：https://.../index.m3u8 或 mp4 链接" />
+            描述（可选）
+            <input id="upload-description" placeholder="例如：第 1 集，甜宠" />
           </label>
 
           <label>
-            集数
-            <input id="episode" type="number" min="1" step="1" value="1" />
+            分类（可选）
+            <input id="upload-category" placeholder="例如：甜宠" />
           </label>
 
           <label>
             解锁类型
-            <select id="unlockType">
+            <select id="upload-unlock-type">
               <option value="free">免费</option>
               <option value="nft">NFT 解锁</option>
             </select>
@@ -46,49 +62,55 @@
 
           <label>
             NFT 合约地址（可选）
-            <input id="nftCollectionAddress" placeholder="仅 NFT 解锁时填写" />
+            <input id="upload-nft-address" placeholder="仅 NFT 解锁时填写" />
           </label>
 
           <label>
             价格 TON（可选）
-            <input id="price" type="number" min="0" step="0.1" value="0.5" />
+            <input id="upload-price" type="number" min="0" step="0.1" value="0.5" />
           </label>
 
-          <label>
-            演员（可选，逗号分隔）
-            <input id="actors" placeholder="演员A, 演员B" />
+          <label class="checkbox-label">
+            <span>上传为加密资产</span>
+            <input id="upload-encrypted" type="checkbox" />
           </label>
 
-          <label>
-            关键词（可选，逗号分隔）
-            <input id="keywords" placeholder="逆袭, 豪门, 甜宠" />
+          <label class="full-width">
+            额外 metadata（JSON，可选）
+            <textarea
+              id="upload-metadata-json"
+              rows="4"
+              placeholder='例如：{"series":"总裁的替身新娘","episode":"1"}'
+            ></textarea>
           </label>
 
           <div class="actions">
-            <button type="submit" id="submit-btn">添加到列表</button>
-            <button type="button" id="reset-form" class="secondary">清空输入</button>
+            <button type="submit" id="upload-submit">开始上传</button>
+            <button type="button" id="upload-reset" class="secondary">清空上传表单</button>
           </div>
         </form>
+        <p id="upload-progress" class="tip">等待上传。</p>
       </section>
 
       <section class="panel">
         <div class="list-head">
-          <h2>当前短剧列表</h2>
+          <h2>资产列表</h2>
           <div class="actions-row">
-            <button id="refresh-list" class="secondary">刷新</button>
-            <button id="clear-all" class="danger">清空全部</button>
+            <input id="search-input" placeholder="按名称/Playback ID 搜索" />
+            <button id="refresh-list" class="secondary">刷新列表</button>
           </div>
         </div>
 
-        <div id="empty-state" class="empty">当前没有短剧，请先添加。</div>
+        <div id="empty-state" class="empty">当前没有资产，请先连接并上传。</div>
 
         <table id="video-table" class="table" hidden>
           <thead>
             <tr>
-              <th>剧名</th>
-              <th>集数</th>
+              <th>名称</th>
+              <th>状态</th>
               <th>Playback ID</th>
-              <th>类型</th>
+              <th>创建时间</th>
+              <th>核心 metadata</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -96,23 +118,36 @@
         </table>
       </section>
 
-      <section class="panel">
-        <h2>导入 / 导出</h2>
-        <div class="actions-row">
-          <button id="export-json" class="secondary">导出 JSON</button>
-          <label class="import-btn">
-            导入 JSON
-            <input id="import-json" type="file" accept="application/json" hidden />
+      <section id="edit-panel" class="panel" hidden>
+        <h2>编辑资产元数据</h2>
+        <form id="edit-form" class="form-grid">
+          <label>
+            Asset ID
+            <input id="edit-id" readonly />
           </label>
-        </div>
-        <p class="tip">导入会覆盖当前列表，请先导出备份。</p>
+
+          <label>
+            资源名称
+            <input id="edit-name" required />
+          </label>
+
+          <label class="full-width">
+            metadata（JSON）
+            <textarea id="edit-metadata-json" rows="6"></textarea>
+          </label>
+
+          <div class="actions">
+            <button type="submit" id="edit-submit">保存修改</button>
+            <button type="button" id="edit-cancel" class="secondary">取消编辑</button>
+          </div>
+        </form>
       </section>
 
       <section class="panel">
-        <h2>播放失败排查</h2>
-        <p class="tip">1）`Playback ID` 不能填 1/2/3 这种数字，必须是 Livepeer 真实 ID。</p>
-        <p class="tip">2）如果你有完整 m3u8/mp4 地址，可直接填“播放地址”。</p>
-        <p class="tip">3）GitHub Pages 不支持私有签名流，私有视频请用 Vercel 部署签名接口。</p>
+        <h2>说明</h2>
+        <p class="tip">1）当前版本按你的要求：不做域名白名单，直接前端调用 API。</p>
+        <p class="tip">2）如果上传成功但列表没立刻显示，等待 Livepeer 处理后点击“刷新列表”。</p>
+        <p class="tip">3）metadata 建议包含：nftCollectionAddress、price、category、unlockType。</p>
       </section>
 
       <p id="toast" class="toast" aria-live="polite"></p>

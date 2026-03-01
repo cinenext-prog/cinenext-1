@@ -1,32 +1,41 @@
-const STORAGE_KEY = 'cinenext_videos';
-const COMPAT_STORAGE_KEY = 'legacyVideos';
-const VERSION_KEY = 'cinenext_videos_version';
+const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
+const LIVEPEER_API_BASE = 'https://livepeer.studio/api';
 
-const form = document.querySelector('#video-form');
-const titleInput = document.querySelector('#title');
-const playbackIdInput = document.querySelector('#playbackId');
-const playbackUrlInput = document.querySelector('#playbackUrl');
-const episodeInput = document.querySelector('#episode');
-const unlockTypeInput = document.querySelector('#unlockType');
-const nftAddressInput = document.querySelector('#nftCollectionAddress');
-const priceInput = document.querySelector('#price');
-const actorsInput = document.querySelector('#actors');
-const keywordsInput = document.querySelector('#keywords');
+const apiKeyInput = document.querySelector('#api-key');
+const saveKeyBtn = document.querySelector('#save-key');
+const connectBtn = document.querySelector('#connect-api');
+const clearKeyBtn = document.querySelector('#clear-key');
+const apiStatus = document.querySelector('#api-status');
 
-const tbody = document.querySelector('#video-tbody');
+const uploadForm = document.querySelector('#upload-form');
+const uploadNameInput = document.querySelector('#upload-name');
+const uploadFileInput = document.querySelector('#upload-file');
+const uploadDescriptionInput = document.querySelector('#upload-description');
+const uploadCategoryInput = document.querySelector('#upload-category');
+const uploadUnlockTypeInput = document.querySelector('#upload-unlock-type');
+const uploadNftAddressInput = document.querySelector('#upload-nft-address');
+const uploadPriceInput = document.querySelector('#upload-price');
+const uploadEncryptedInput = document.querySelector('#upload-encrypted');
+const uploadMetadataJsonInput = document.querySelector('#upload-metadata-json');
+const uploadResetBtn = document.querySelector('#upload-reset');
+const uploadProgress = document.querySelector('#upload-progress');
+
+const searchInput = document.querySelector('#search-input');
+const refreshBtn = document.querySelector('#refresh-list');
 const table = document.querySelector('#video-table');
+const tbody = document.querySelector('#video-tbody');
 const emptyState = document.querySelector('#empty-state');
+
+const editPanel = document.querySelector('#edit-panel');
+const editForm = document.querySelector('#edit-form');
+const editIdInput = document.querySelector('#edit-id');
+const editNameInput = document.querySelector('#edit-name');
+const editMetadataJsonInput = document.querySelector('#edit-metadata-json');
+const editCancelBtn = document.querySelector('#edit-cancel');
+
 const toast = document.querySelector('#toast');
 
-const resetFormBtn = document.querySelector('#reset-form');
-const submitBtn = document.querySelector('#submit-btn');
-const formTitle = document.querySelector('#form-title');
-const refreshBtn = document.querySelector('#refresh-list');
-const clearAllBtn = document.querySelector('#clear-all');
-const exportBtn = document.querySelector('#export-json');
-const importInput = document.querySelector('#import-json');
-
-let editingId = '';
+let assets = [];
 
 const safeParse = (raw, fallback) => {
   try {
@@ -36,19 +45,6 @@ const safeParse = (raw, fallback) => {
   }
 };
 
-const readList = () => {
-  const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(COMPAT_STORAGE_KEY);
-  if (!raw) return [];
-  const data = safeParse(raw, []);
-  return Array.isArray(data) ? data : [];
-};
-
-const writeList = (list) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  localStorage.setItem(COMPAT_STORAGE_KEY, JSON.stringify(list));
-  localStorage.setItem(VERSION_KEY, String(Date.now()));
-};
-
 const showToast = (text, isError = false) => {
   toast.textContent = text;
   toast.style.color = isError ? '#ff9d9d' : '#89d6a8';
@@ -56,259 +52,524 @@ const showToast = (text, isError = false) => {
     if (toast.textContent === text) {
       toast.textContent = '';
     }
-  }, 2200);
+  }, 2600);
 };
 
-const parseCsv = (value) =>
-  String(value || '')
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
+const readApiKey = () => apiKeyInput.value.trim();
 
-const randomStat = (min, max) => Math.floor(min + Math.random() * (max - min));
-const looksLikeLivepeerPlaybackId = (value) => /^[a-zA-Z0-9_-]{8,}$/.test(value);
-const looksLikePlayableUrl = (value) => /^https:\/\/.+\.(m3u8|mp4)(\?.*)?$/i.test(value);
-
-const toRow = (video, index) => {
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td>${video.title || '-'}</td>
-    <td>${video.episode || index + 1}</td>
-    <td>${video.playbackId || '-'}</td>
-    <td>${video.unlockType === 'nft' ? 'NFT' : '免费'}</td>
-    <td class="actions-cell">
-      <button type="button" class="secondary" data-action="edit" data-id="${video.id}">编辑</button>
-      <button type="button" data-action="delete" data-id="${video.id}">删除</button>
-    </td>
-  `;
-  return tr;
+const setApiStatus = (text, isError = false) => {
+  apiStatus.textContent = text;
+  apiStatus.style.color = isError ? '#ff9d9d' : '#97a2bb';
 };
 
-const resetFormState = () => {
-  editingId = '';
-  formTitle.textContent = '新增短剧';
-  submitBtn.textContent = '添加到列表';
-  resetFormBtn.textContent = '清空输入';
-
-  form.reset();
-  episodeInput.value = '1';
-  priceInput.value = '0.5';
-  unlockTypeInput.value = 'free';
-  playbackUrlInput.value = '';
+const toIsoTime = (value) => {
+  if (!value) return '-';
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) return '-';
+  return `${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(
+    time.getDate()
+  ).padStart(2, '0')} ${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
 };
 
-const startEdit = (video) => {
-  editingId = String(video.id);
-  formTitle.textContent = '编辑短剧';
-  submitBtn.textContent = '保存修改';
-  resetFormBtn.textContent = '取消编辑';
+const normalizeMetadata = (metadata) => {
+  if (!metadata) return {};
+  if (typeof metadata === 'string') {
+    const parsed = safeParse(metadata, {});
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  }
+  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
+    return metadata;
+  }
+  return {};
+};
 
-  titleInput.value = String(video.title || '');
-  playbackIdInput.value = String(video.playbackId || '');
-  playbackUrlInput.value = String(video.playbackUrl || '');
-  episodeInput.value = String(Math.max(1, Number(video.episode || 1)));
-  unlockTypeInput.value = video.unlockType === 'nft' ? 'nft' : 'free';
-  nftAddressInput.value = String(video.nftCollectionAddress || '');
-  priceInput.value = String(video.price || '0.5');
-  actorsInput.value = Array.isArray(video.actors) ? video.actors.join(', ') : '';
-  keywordsInput.value = Array.isArray(video.keywords) ? video.keywords.join(', ') : '';
+const pickPlaybackId = (asset) => {
+  if (asset.playbackId) return String(asset.playbackId);
+  if (Array.isArray(asset.playbackIds) && asset.playbackIds[0]?.id) return String(asset.playbackIds[0].id);
+  if (Array.isArray(asset.playbackIds) && typeof asset.playbackIds[0] === 'string') return asset.playbackIds[0];
+  return '';
+};
 
-  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+const normalizeAsset = (asset) => {
+  const metadata = normalizeMetadata(asset.metadata);
+  return {
+    id: String(asset.id || ''),
+    name: String(asset.name || '未命名资源'),
+    status: String(asset.status?.phase || asset.status || 'unknown'),
+    createdAt: asset.createdAt || asset.created_at || '',
+    playbackId: pickPlaybackId(asset),
+    metadata,
+    raw: asset,
+  };
+};
+
+const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
+  const apiKey = readApiKey();
+  if (!apiKey) {
+    throw new Error('请先填写 API Key');
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+  };
+
+  if (body) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const response = await fetch(`${LIVEPEER_API_BASE}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const text = await response.text();
+  const parsed = safeParse(text, null);
+
+  if (!response.ok) {
+    const reason =
+      parsed?.error || parsed?.message || parsed?.details || text || `请求失败（HTTP ${response.status}）`;
+    throw new Error(String(reason));
+  }
+
+  return parsed;
+};
+
+const toQueryString = (params) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    query.set(key, String(value));
+  });
+  const output = query.toString();
+  return output ? `?${output}` : '';
+};
+
+const parseAssetPage = (payload) => {
+  if (Array.isArray(payload)) {
+    return { items: payload, nextCursor: '', hasNext: false };
+  }
+
+  const items = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.assets)
+      ? payload.assets
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : [];
+
+  const nextCursor =
+    payload?.nextCursor || payload?.next_cursor || payload?.meta?.nextCursor || payload?.meta?.next_cursor || '';
+
+  const hasNext = Boolean(payload?.hasNextPage || payload?.hasNext || payload?.meta?.hasNextPage || nextCursor);
+
+  return {
+    items,
+    nextCursor: String(nextCursor || ''),
+    hasNext,
+  };
+};
+
+const listAssets = async () => {
+  const limit = 100;
+  const maxPages = 50;
+  const collected = [];
+
+  let page = 1;
+  let cursor = '';
+
+  for (let index = 0; index < maxPages; index += 1) {
+    const query = toQueryString({ limit, page, cursor });
+    const payload = await requestLivepeer(`/asset${query}`);
+    const parsed = parseAssetPage(payload);
+
+    if (!parsed.items.length) break;
+
+    collected.push(...parsed.items);
+
+    if (parsed.nextCursor) {
+      cursor = parsed.nextCursor;
+      page += 1;
+      continue;
+    }
+
+    if (parsed.items.length < limit || !parsed.hasNext) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  const unique = [];
+  const seen = new Set();
+  collected.forEach((item) => {
+    const id = String(item?.id || '');
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    unique.push(item);
+  });
+
+  return unique;
+};
+
+const toMetaPreview = (metadata) => {
+  const values = [];
+  const keys = ['unlockType', 'nftCollectionAddress', 'price', 'category'];
+  keys.forEach((key) => {
+    if (metadata?.[key] !== undefined && metadata?.[key] !== '') {
+      values.push(`${key}: ${metadata[key]}`);
+    }
+  });
+  if (values.length === 0) {
+    return '-';
+  }
+  return values.join(' | ');
+};
+
+const setUploadProgress = (text, isError = false) => {
+  uploadProgress.textContent = text;
+  uploadProgress.style.color = isError ? '#ff9d9d' : '#97a2bb';
+};
+
+const clearEditForm = () => {
+  editIdInput.value = '';
+  editNameInput.value = '';
+  editMetadataJsonInput.value = '';
+  editPanel.hidden = true;
+};
+
+const buildMetadataFromUploadForm = () => {
+  const unlockType = uploadUnlockTypeInput.value === 'nft' ? 'nft' : 'free';
+  const metadata = {
+    unlockType,
+    category: uploadCategoryInput.value.trim(),
+    description: uploadDescriptionInput.value.trim(),
+    nftCollectionAddress: unlockType === 'nft' ? uploadNftAddressInput.value.trim() : '',
+    price: String(uploadPriceInput.value || '0.5').trim(),
+  };
+
+  const extras = safeParse(uploadMetadataJsonInput.value.trim() || '{}', null);
+  if (extras === null || typeof extras !== 'object' || Array.isArray(extras)) {
+    throw new Error('额外 metadata 必须是 JSON 对象');
+  }
+
+  Object.entries(extras).forEach(([key, value]) => {
+    metadata[key] = value;
+  });
+
+  return metadata;
+};
+
+const uploadByTus = async ({ file, name, metadata }) => {
+  const apiKey = readApiKey();
+  if (!apiKey) {
+    throw new Error('请先填写 API Key');
+  }
+
+  const tusModule = await import('https://esm.sh/tus-js-client@4.3.1');
+  const tus = tusModule.default || tusModule;
+
+  const uploadMetadata = {
+    filename: file.name,
+    filetype: file.type || 'video/mp4',
+    name,
+    encrypted: uploadEncryptedInput.checked ? 'true' : 'false',
+  };
+
+  Object.entries(metadata).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    uploadMetadata[key] = typeof value === 'string' ? value : JSON.stringify(value);
+  });
+
+  return new Promise((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint: `${LIVEPEER_API_BASE}/asset/upload/direct`,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      retryDelays: [0, 1000, 3000, 5000],
+      metadata: uploadMetadata,
+      onError: (error) => {
+        reject(error instanceof Error ? error : new Error('上传失败'));
+      },
+      onProgress: (uploaded, total) => {
+        const progress = total > 0 ? ((uploaded / total) * 100).toFixed(1) : '0.0';
+        setUploadProgress(`上传中：${progress}%`);
+      },
+      onSuccess: () => {
+        resolve({ uploadUrl: upload.url || '' });
+      },
+    });
+
+    upload.start();
+  });
 };
 
 const render = () => {
-  const list = readList();
+  const query = searchInput.value.trim().toLowerCase();
+  const filtered = assets.filter((item) => {
+    if (!query) return true;
+    return item.name.toLowerCase().includes(query) || item.playbackId.toLowerCase().includes(query);
+  });
+
   tbody.innerHTML = '';
 
-  if (list.length === 0) {
+  if (filtered.length === 0) {
     table.hidden = true;
     emptyState.hidden = false;
+    emptyState.textContent = assets.length === 0 ? '当前没有资产，请先连接并上传。' : '没有匹配的搜索结果。';
     return;
   }
 
   table.hidden = false;
   emptyState.hidden = true;
-  list.forEach((video, index) => {
-    tbody.appendChild(toRow(video, index));
+
+  filtered.forEach((asset) => {
+    const tr = document.createElement('tr');
+
+    const nameTd = document.createElement('td');
+    nameTd.textContent = asset.name;
+
+    const statusTd = document.createElement('td');
+    statusTd.textContent = asset.status;
+
+    const playbackTd = document.createElement('td');
+    playbackTd.textContent = asset.playbackId || '-';
+
+    const timeTd = document.createElement('td');
+    timeTd.textContent = toIsoTime(asset.createdAt);
+
+    const metadataTd = document.createElement('td');
+    metadataTd.textContent = toMetaPreview(asset.metadata);
+
+    const actionsTd = document.createElement('td');
+    actionsTd.className = 'actions-cell';
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'secondary';
+    editBtn.dataset.action = 'edit';
+    editBtn.dataset.id = asset.id;
+    editBtn.textContent = '编辑';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'danger';
+    deleteBtn.dataset.action = 'delete';
+    deleteBtn.dataset.id = asset.id;
+    deleteBtn.textContent = '删除';
+
+    actionsTd.append(editBtn, deleteBtn);
+    tr.append(nameTd, statusTd, playbackTd, timeTd, metadataTd, actionsTd);
+    tbody.appendChild(tr);
   });
 };
 
-const buildVideo = () => {
-  const title = titleInput.value.trim();
-  const playbackId = playbackIdInput.value.trim();
-  const playbackUrl = playbackUrlInput.value.trim();
-
-  if (!title) {
-    throw new Error('请填写剧名');
+const refreshAssets = async (showMessage = true) => {
+  const list = await listAssets();
+  assets = list.map(normalizeAsset);
+  render();
+  if (showMessage) {
+    showToast(`已拉取 ${assets.length} 条资产`);
   }
-  if (!playbackId) {
-    throw new Error('请填写 Playback ID');
-  }
-  if (!looksLikeLivepeerPlaybackId(playbackId)) {
-    throw new Error('Playback ID 格式不正确，请填写 Livepeer 真实 Playback ID（不要填 1/2/3）');
-  }
-  if (playbackUrl && !looksLikePlayableUrl(playbackUrl)) {
-    throw new Error('播放地址格式不正确，请填写 https 开头的 m3u8/mp4 链接');
-  }
-
-  const unlockType = unlockTypeInput.value === 'nft' ? 'nft' : 'free';
-  const episode = Math.max(1, Number(episodeInput.value || 1));
-
-  return {
-    id: `legacy-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    title,
-    playbackId,
-    playbackUrl: playbackUrl || `https://livepeercdn.com/hls/${playbackId}/index.m3u8`,
-    unlockType,
-    nftCollectionAddress: unlockType === 'nft' ? nftAddressInput.value.trim() : '',
-    price: String(priceInput.value || '0.5'),
-    actors: parseCsv(actorsInput.value),
-    keywords: parseCsv(keywordsInput.value),
-    episode,
-    likes: randomStat(1000, 6000),
-    views: randomStat(10000, 300000),
-  };
+  setApiStatus(`连接成功，当前资产数量：${assets.length}`);
 };
 
-form.addEventListener('submit', (event) => {
-  event.preventDefault();
-
-  try {
-    const video = buildVideo();
-    const list = readList();
-    const conflict = list.some(
-      (item) =>
-        String(item.id) !== String(editingId) &&
-        item.playbackId === video.playbackId &&
-        Number(item.episode || 1) === Number(video.episode || 1)
-    );
-
-    if (conflict) {
-      showToast('该 Playback ID + 集数 组合已存在', true);
-      return;
-    }
-
-    const existingIndex = list.findIndex((item) => String(item.id) === String(editingId));
-    if (existingIndex >= 0) {
-      list[existingIndex] = {
-        ...list[existingIndex],
-        ...video,
-        id: list[existingIndex].id,
-      };
-    } else {
-      list.unshift(video);
-    }
-
-    writeList(list);
-    resetFormState();
-    render();
-    showToast(existingIndex >= 0 ? '已保存修改' : '已添加短剧');
-  } catch (error) {
-    showToast(error.message || '添加失败', true);
-  }
-});
-
-tbody.addEventListener('click', (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-
-  const action = target.dataset.action;
-  const id = target.dataset.id;
-  if (!id) return;
-
-  const list = readList();
-
-  if (action === 'edit') {
-    const current = list.find((item) => String(item.id) === String(id));
-    if (!current) {
-      showToast('未找到要编辑的记录', true);
-      return;
-    }
-    startEdit(current);
+const openEdit = (id) => {
+  const target = assets.find((item) => item.id === id);
+  if (!target) {
+    showToast('未找到该资产', true);
     return;
   }
 
-  if (action !== 'delete') return;
+  editIdInput.value = target.id;
+  editNameInput.value = target.name;
+  editMetadataJsonInput.value = JSON.stringify(target.metadata || {}, null, 2);
+  editPanel.hidden = false;
+  editPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 
-  const next = list.filter((item) => item.id !== id);
-  writeList(next);
+const deleteAsset = async (id) => {
+  const target = assets.find((item) => item.id === id);
+  const confirmText = target ? `确认删除资源：${target.name}？` : '确认删除该资源？';
+  const confirmed = window.confirm(confirmText);
+  if (!confirmed) return;
 
-  if (String(editingId) === String(id)) {
-    resetFormState();
+  await requestLivepeer(`/asset/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  assets = assets.filter((item) => item.id !== id);
+  render();
+  clearEditForm();
+  showToast('已删除资源');
+};
+
+saveKeyBtn.addEventListener('click', () => {
+  const key = readApiKey();
+  if (!key) {
+    showToast('请先输入 API Key', true);
+    return;
+  }
+  localStorage.setItem(API_KEY_STORAGE, key);
+  showToast('API Key 已保存到浏览器本地');
+});
+
+clearKeyBtn.addEventListener('click', () => {
+  localStorage.removeItem(API_KEY_STORAGE);
+  apiKeyInput.value = '';
+  assets = [];
+  render();
+  clearEditForm();
+  setApiStatus('API Key 已清除。');
+  showToast('已清除 API Key');
+});
+
+connectBtn.addEventListener('click', async () => {
+  try {
+    setApiStatus('连接中...');
+    await refreshAssets();
+  } catch (error) {
+    setApiStatus('连接失败，请检查 API Key 或网络。', true);
+    showToast(error instanceof Error ? error.message : '连接失败', true);
+  }
+});
+
+refreshBtn.addEventListener('click', async () => {
+  try {
+    await refreshAssets();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '刷新失败', true);
+  }
+});
+
+searchInput.addEventListener('input', () => {
+  render();
+});
+
+uploadForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const file = uploadFileInput.files?.[0];
+
+  if (!file) {
+    showToast('请选择视频文件', true);
+    return;
   }
 
-  render();
-  showToast('已删除');
-});
-
-resetFormBtn.addEventListener('click', () => {
-  resetFormState();
-});
-
-refreshBtn.addEventListener('click', () => {
-  render();
-  showToast('已刷新');
-});
-
-clearAllBtn.addEventListener('click', () => {
-  const ok = window.confirm('确认清空全部短剧吗？');
-  if (!ok) return;
-  writeList([]);
-  resetFormState();
-  render();
-  showToast('已清空');
-});
-
-exportBtn.addEventListener('click', () => {
-  const list = readList();
-  const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'cinenext_videos.json';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('已导出 JSON');
-});
-
-importInput.addEventListener('change', async () => {
-  const file = importInput.files?.[0];
-  if (!file) return;
+  const name = uploadNameInput.value.trim();
+  if (!name) {
+    showToast('请输入资源名称', true);
+    return;
+  }
 
   try {
-    const text = await file.text();
-    const parsed = safeParse(text, null);
-    if (!Array.isArray(parsed)) {
-      throw new Error('JSON 格式无效，必须是数组');
-    }
+    const metadata = buildMetadataFromUploadForm();
+    setUploadProgress('初始化上传...');
+    await uploadByTus({ file, name, metadata });
+    setUploadProgress('上传完成，正在等待 Livepeer 处理...');
+    showToast('上传成功，请稍等后刷新列表');
 
-    const normalized = parsed
-      .map((item, index) => ({
-        id: String(item.id || `legacy-import-${Date.now()}-${index}`),
-        title: String(item.title || `短剧 ${index + 1}`),
-        playbackId: String(item.playbackId || '').trim(),
-        playbackUrl: String(item.playbackUrl || `https://livepeercdn.com/hls/${item.playbackId || ''}/index.m3u8`),
-        unlockType: item.unlockType === 'nft' ? 'nft' : 'free',
-        nftCollectionAddress: String(item.nftCollectionAddress || ''),
-        price: String(item.price || '0.5'),
-        actors: Array.isArray(item.actors) ? item.actors : [],
-        keywords: Array.isArray(item.keywords) ? item.keywords : [],
-        episode: Math.max(1, Number(item.episode || index + 1)),
-        likes: Number(item.likes || randomStat(1000, 6000)),
-        views: Number(item.views || randomStat(10000, 300000)),
-      }))
-      .filter((item) => item.playbackId);
+    uploadForm.reset();
+    uploadPriceInput.value = '0.5';
 
-    writeList(normalized);
-    resetFormState();
-    render();
-    showToast('导入成功');
+    window.setTimeout(async () => {
+      try {
+        await refreshAssets(false);
+        setUploadProgress('已刷新列表。');
+      } catch {
+        setUploadProgress('上传成功，自动刷新失败，请手动点击“刷新列表”。', true);
+      }
+    }, 1800);
   } catch (error) {
-    showToast(error.message || '导入失败', true);
-  } finally {
-    importInput.value = '';
+    setUploadProgress('上传失败。', true);
+    showToast(error instanceof Error ? error.message : '上传失败', true);
   }
 });
 
-resetFormState();
-render();
+uploadResetBtn.addEventListener('click', () => {
+  uploadForm.reset();
+  uploadPriceInput.value = '0.5';
+  setUploadProgress('已清空上传表单。');
+});
+
+tbody.addEventListener('click', async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+
+  const { action, id } = target.dataset;
+  if (!action || !id) return;
+
+  try {
+    if (action === 'edit') {
+      openEdit(id);
+      return;
+    }
+
+    if (action === 'delete') {
+      await deleteAsset(id);
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '操作失败', true);
+  }
+});
+
+editCancelBtn.addEventListener('click', () => {
+  clearEditForm();
+});
+
+editForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const id = editIdInput.value.trim();
+  if (!id) {
+    showToast('缺少 asset id', true);
+    return;
+  }
+
+  const name = editNameInput.value.trim();
+  if (!name) {
+    showToast('资源名称不能为空', true);
+    return;
+  }
+
+  const metadata = safeParse(editMetadataJsonInput.value.trim() || '{}', null);
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    showToast('metadata 必须是 JSON 对象', true);
+    return;
+  }
+
+  try {
+    await requestLivepeer(`/asset/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: {
+        name,
+        metadata,
+      },
+    });
+
+    showToast('已保存修改');
+    clearEditForm();
+    await refreshAssets(false);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '保存失败', true);
+  }
+});
+
+const bootstrap = async () => {
+  const cachedKey = localStorage.getItem(API_KEY_STORAGE) || '';
+  apiKeyInput.value = cachedKey;
+  uploadPriceInput.value = '0.5';
+
+  if (!cachedKey) {
+    setApiStatus('尚未连接。');
+    render();
+    return;
+  }
+
+  setApiStatus('检测到本地 API Key，尝试自动连接...');
+  try {
+    await refreshAssets(false);
+    showToast('已自动连接 Livepeer');
+  } catch {
+    setApiStatus('自动连接失败，请检查 API Key。', true);
+  }
+};
+
+bootstrap();
