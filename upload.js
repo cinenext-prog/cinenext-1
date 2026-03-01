@@ -5,6 +5,7 @@ const SERIES_DRAFTS_STORAGE = 'cinenext_series_drafts';
 const LIVEPEER_API_BASES = ['https://livepeer.studio/api', 'https://livepeer.com/api'];
 const LIVEPEER_UPLOAD_PATHS = ['/asset/request-upload', '/asset/upload', '/asset/create-upload', '/asset/requestUpload'];
 const UPLOAD_PROXY_PATH = '/api/request-upload';
+const ASSET_UPDATE_PROXY_PATH = '/api/asset-update';
 
 const apiKeyInput = document.querySelector('#api-key');
 const saveKeyBtn = document.querySelector('#save-key');
@@ -473,6 +474,49 @@ const requestUpload = async ({ file, name, metadata }) => {
   }
 };
 
+const patchAssetMetadata = async ({ assetId, name, metadata }) => {
+  if (!assetId) return;
+
+  const apiKey = readApiKey();
+
+  if (apiKey) {
+    await requestLivepeer(`/asset/${encodeURIComponent(assetId)}`, {
+      method: 'PATCH',
+      body: {
+        name,
+        metadata,
+      },
+    });
+    return;
+  }
+
+  const response = await fetch(ASSET_UPDATE_PROXY_PATH, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      assetId,
+      name,
+      metadata,
+    }),
+  });
+
+  const text = await response.text();
+  const parsed = safeParse(text, null);
+
+  if (!response.ok) {
+    const reason =
+      parsed?.error ||
+      parsed?.message ||
+      parsed?.details ||
+      (Array.isArray(parsed?.errors) && parsed.errors[0]) ||
+      text ||
+      `代理请求失败（HTTP ${response.status}）`;
+    throw new Error(`写入剧信息失败：${String(reason)}`);
+  }
+};
+
 const buildMetadata = (series, episodeNumber) => {
   const freeEpisodes = Math.max(0, Number(series.freeEpisodes || 0));
   const isFreeEpisode = episodeNumber <= freeEpisodes;
@@ -650,13 +694,7 @@ uploadForm.addEventListener('submit', async (event) => {
       const assetId = String(uploadResult?.assetId || '').trim();
       if (assetId) {
         setUploadProgress(`上传完成，正在写入剧信息：第 ${episodeNumber} 集`);
-        await requestLivepeer(`/asset/${encodeURIComponent(assetId)}`, {
-          method: 'PATCH',
-          body: {
-            name: uploadName,
-            metadata,
-          },
-        });
+        await patchAssetMetadata({ assetId, name: uploadName, metadata });
       }
 
       selectedSeries.nextEpisode = episodeNumber + 1;

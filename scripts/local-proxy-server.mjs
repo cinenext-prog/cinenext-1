@@ -5,6 +5,7 @@ import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import requestUploadHandler from '../api/request-upload.js';
+import assetUpdateHandler from '../api/asset-update.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +25,10 @@ app.get('/api/health', (_req, res) => {
 
 app.all('/api/request-upload', async (req, res) => {
   await requestUploadHandler(req, res);
+});
+
+app.all('/api/asset-update', async (req, res) => {
+  await assetUpdateHandler(req, res);
 });
 
 app.use('/cinenext-1', express.static(distDir, { extensions: ['html'] }));
