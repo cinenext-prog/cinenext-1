@@ -272,6 +272,8 @@ const requestUpload = async ({ file, name, metadata }) => {
     throw new Error('未获取到 tus 上传地址（tusEndpoint）');
   }
 
+  const tusUrl = String(requestUploadResult?.url || '').trim();
+
   const tusModule = await import('https://esm.sh/tus-js-client@4.3.1');
   const tus = tusModule.default || tusModule;
 
@@ -286,25 +288,57 @@ const requestUpload = async ({ file, name, metadata }) => {
     uploadMetadata[key] = typeof value === 'string' ? value : JSON.stringify(value);
   });
 
-  return new Promise((resolve, reject) => {
-    const upload = new tus.Upload(file, {
-      endpoint: tusEndpoint,
-      retryDelays: [0, 1000, 3000, 5000],
-      metadata: uploadMetadata,
-      onError: (error) => {
-        reject(error instanceof Error ? error : new Error('上传失败'));
-      },
-      onProgress: (uploaded, total) => {
-        const progress = total > 0 ? ((uploaded / total) * 100).toFixed(1) : '0.0';
-        setUploadProgress(`上传中：${progress}%`);
-      },
-      onSuccess: () => {
-        resolve({ uploadUrl: upload.url || '' });
-      },
+  const getTusErrorMessage = (error) => {
+    if (!error) return '上传失败';
+    const message = error instanceof Error ? error.message : String(error);
+    const status = error?.originalResponse?.getStatus?.();
+    const body = error?.originalResponse?.getBody?.();
+    if (status && body) return `${message}（HTTP ${status}: ${body}）`;
+    if (status) return `${message}（HTTP ${status}）`;
+    return message;
+  };
+
+  const runTusUpload = (mode) =>
+    new Promise((resolve, reject) => {
+      let upload;
+      const options = {
+        retryDelays: [0, 1000, 3000, 5000],
+        metadata: uploadMetadata,
+        onError: (error) => {
+          reject(new Error(getTusErrorMessage(error)));
+        },
+        onProgress: (uploaded, total) => {
+          const progress = total > 0 ? ((uploaded / total) * 100).toFixed(1) : '0.0';
+          setUploadProgress(`上传中：${progress}%`);
+        },
+        onSuccess: () => {
+          resolve({ uploadUrl: upload.url || '' });
+        },
+      };
+
+      if (mode === 'uploadUrl' && tusUrl) {
+        options.uploadUrl = tusUrl;
+      } else {
+        options.endpoint = tusEndpoint;
+      }
+
+      upload = new tus.Upload(file, options);
+      upload.start();
     });
 
-    upload.start();
-  });
+  try {
+    return await runTusUpload('endpoint');
+  } catch (endpointError) {
+    if (!tusUrl) {
+      throw endpointError;
+    }
+    setUploadProgress('endpoint 上传失败，尝试备用上传方式...');
+    try {
+      return await runTusUpload('uploadUrl');
+    } catch (uploadUrlError) {
+      throw new Error(`上传失败：${uploadUrlError.message}`);
+    }
+  }
 };
 
 const buildMetadata = (series, episodeNumber) => {
