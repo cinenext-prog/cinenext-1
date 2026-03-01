@@ -22,6 +22,17 @@ const editEpisodeNumberInput = document.querySelector('#edit-episode-number');
 const editMetadataJsonInput = document.querySelector('#edit-metadata-json');
 const editCancelBtn = document.querySelector('#edit-cancel');
 
+const seriesEditPanel = document.querySelector('#series-edit-panel');
+const seriesEditForm = document.querySelector('#series-edit-form');
+const seriesEditOriginalNameInput = document.querySelector('#series-edit-original-name');
+const seriesEditNameInput = document.querySelector('#series-edit-name');
+const seriesEditTotalEpisodesInput = document.querySelector('#series-edit-total-episodes');
+const seriesEditFreeEpisodesInput = document.querySelector('#series-edit-free-episodes');
+const seriesEditPriceInput = document.querySelector('#series-edit-price');
+const seriesEditActorsInput = document.querySelector('#series-edit-actors');
+const seriesEditDescriptionInput = document.querySelector('#series-edit-description');
+const seriesEditCancelBtn = document.querySelector('#series-edit-cancel');
+
 const toast = document.querySelector('#toast');
 
 let assets = [];
@@ -258,6 +269,17 @@ const clearEditForm = () => {
   editPanel.hidden = true;
 };
 
+const clearSeriesEditForm = () => {
+  seriesEditOriginalNameInput.value = '';
+  seriesEditNameInput.value = '';
+  seriesEditTotalEpisodesInput.value = '1';
+  seriesEditFreeEpisodesInput.value = '0';
+  seriesEditPriceInput.value = '0.5';
+  seriesEditActorsInput.value = '';
+  seriesEditDescriptionInput.value = '';
+  seriesEditPanel.hidden = true;
+};
+
 const groupBySeries = (list) => {
   const groups = new Map();
   list.forEach((asset) => {
@@ -390,9 +412,16 @@ const createSeriesCard = (group) => {
   toggleBtn.dataset.series = seriesKey;
   toggleBtn.textContent = isExpanded ? '收起' : '展开';
 
+  const editSeriesBtn = document.createElement('button');
+  editSeriesBtn.type = 'button';
+  editSeriesBtn.className = 'secondary';
+  editSeriesBtn.dataset.action = 'edit-series';
+  editSeriesBtn.dataset.series = seriesKey;
+  editSeriesBtn.textContent = '编辑本剧';
+
   const right = document.createElement('div');
   right.className = 'series-actions';
-  right.append(badge, toggleBtn);
+  right.append(badge, editSeriesBtn, toggleBtn);
 
   header.append(title, right);
 
@@ -504,6 +533,80 @@ const openEdit = (id) => {
   editMetadataJsonInput.value = JSON.stringify(target.metadata || {}, null, 2);
   editPanel.hidden = false;
   editPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+const openSeriesEdit = (seriesName) => {
+  const grouped = groupBySeries(assets);
+  const target = grouped.find((group) => group.seriesName === seriesName);
+  if (!target) {
+    showToast('未找到该剧', true);
+    return;
+  }
+
+  seriesEditOriginalNameInput.value = target.seriesName;
+  seriesEditNameInput.value = target.seriesName;
+  seriesEditTotalEpisodesInput.value = String(target.plannedTotal || target.uploadedEpisodes || 1);
+  seriesEditFreeEpisodesInput.value = String(target.freeEpisodes || 0);
+  seriesEditPriceInput.value = target.defaultPrice || '0.5';
+  seriesEditActorsInput.value = target.actors.join(', ');
+  seriesEditDescriptionInput.value = target.description || '';
+  seriesEditPanel.hidden = false;
+  seriesEditPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+const saveSeriesInfo = async () => {
+  const originalSeriesName = seriesEditOriginalNameInput.value.trim();
+  const nextSeriesName = seriesEditNameInput.value.trim();
+  const totalEpisodes = Math.max(1, Number(seriesEditTotalEpisodesInput.value || 1));
+  const freeEpisodes = Math.max(0, Number(seriesEditFreeEpisodesInput.value || 0));
+  const priceValue = Math.max(0, Number(seriesEditPriceInput.value || 0));
+  const actors = String(seriesEditActorsInput.value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const description = String(seriesEditDescriptionInput.value || '').trim();
+
+  if (!originalSeriesName || !nextSeriesName) {
+    throw new Error('剧名不能为空');
+  }
+
+  const targets = assets
+    .filter((item) => item.seriesName === originalSeriesName)
+    .sort((left, right) => left.episodeNumber - right.episodeNumber || String(left.createdAt).localeCompare(String(right.createdAt)));
+
+  if (!targets.length) {
+    throw new Error('未找到该剧集资源');
+  }
+
+  for (let index = 0; index < targets.length; index += 1) {
+    const asset = targets[index];
+    const episodeNumber = asset.episodeNumber >= 9999 ? index + 1 : asset.episodeNumber;
+    const isFreeEpisode = episodeNumber <= freeEpisodes;
+
+    const nextMetadata = {
+      ...asset.metadata,
+      seriesName: nextSeriesName,
+      totalEpisodes,
+      freeEpisodes,
+      isFreeEpisode,
+      unlockType: isFreeEpisode ? 'free' : 'paid',
+      price: isFreeEpisode ? '0' : String(priceValue),
+      actors,
+      seriesDescription: description,
+    };
+
+    await requestLivepeer(`/asset/${encodeURIComponent(asset.id)}`, {
+      method: 'PATCH',
+      body: {
+        name: asset.name,
+        metadata: nextMetadata,
+      },
+    });
+  }
+
+  clearSeriesEditForm();
+  showToast(`已更新《${nextSeriesName}》的剧信息`);
+  await refreshAssets(false);
 };
 
 const deleteAsset = async (id) => {
@@ -680,6 +783,13 @@ seriesList.addEventListener('click', async (event) => {
     return;
   }
 
+  if (action === 'edit-series') {
+    const seriesKey = String(series || '').trim();
+    if (!seriesKey) return;
+    openSeriesEdit(seriesKey);
+    return;
+  }
+
   if (!id) return;
 
   try {
@@ -708,6 +818,19 @@ seriesList.addEventListener('click', async (event) => {
 
 editCancelBtn.addEventListener('click', () => {
   clearEditForm();
+});
+
+seriesEditCancelBtn.addEventListener('click', () => {
+  clearSeriesEditForm();
+});
+
+seriesEditForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    await saveSeriesInfo();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '保存本剧信息失败', true);
+  }
 });
 
 editForm.addEventListener('submit', async (event) => {

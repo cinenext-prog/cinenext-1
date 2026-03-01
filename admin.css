@@ -185,6 +185,7 @@ button.danger {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .series-body {
@@ -219,6 +220,10 @@ button.danger {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+#series-edit-description {
+  min-height: 88px;
 }
 
 .series-header h3 {
