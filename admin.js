@@ -117,6 +117,11 @@ const resolveSeriesName = (asset, metadata) => {
   if (fromMetadata) return fromMetadata;
 
   const fromAssetName = String(asset.name || '').trim();
+  const fromNamePattern = fromAssetName.match(/^(.*?)(?:\s*第\s*\d+\s*集.*)$/i);
+  if (fromNamePattern?.[1]?.trim()) {
+    return fromNamePattern[1].trim();
+  }
+
   return fromAssetName || '未分组剧名';
 };
 

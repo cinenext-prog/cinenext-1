@@ -390,6 +390,8 @@ const requestUpload = async ({ file, name, metadata }) => {
     throw new Error('未获取到 tus 上传地址（tusEndpoint）');
   }
 
+  const requestAssetId = String(requestUploadResult?.asset?.id || '').trim();
+
   const tusUrl = String(requestUploadResult?.url || '').trim();
 
   const uploadMetadata = {
@@ -440,7 +442,7 @@ const requestUpload = async ({ file, name, metadata }) => {
           setUploadProgress(`上传中：${progress}%`);
         },
         onSuccess: () => {
-          resolve({ uploadUrl: upload.url || '' });
+          resolve({ uploadUrl: upload.url || '', assetId: requestAssetId });
         },
       };
 
@@ -643,7 +645,20 @@ uploadForm.addEventListener('submit', async (event) => {
       const uploadName = `${selectedSeries.seriesName} 第${episodeNumber}集`;
 
       setUploadProgress(`准备上传 ${index + 1}/${files.length}：第 ${episodeNumber} 集`);
-      await requestUpload({ file, name: uploadName, metadata });
+      const uploadResult = await requestUpload({ file, name: uploadName, metadata });
+
+      const assetId = String(uploadResult?.assetId || '').trim();
+      if (assetId) {
+        setUploadProgress(`上传完成，正在写入剧信息：第 ${episodeNumber} 集`);
+        await requestLivepeer(`/asset/${encodeURIComponent(assetId)}`, {
+          method: 'PATCH',
+          body: {
+            name: uploadName,
+            metadata,
+          },
+        });
+      }
+
       selectedSeries.nextEpisode = episodeNumber + 1;
     }
 
