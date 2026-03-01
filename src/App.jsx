@@ -5,7 +5,6 @@ import SearchPage from './components/SearchPage';
 import usePersistentState from './hooks/usePersistentState';
 import useTelegramSetup from './hooks/useTelegramSetup';
 import useVideoReloadSync from './hooks/useVideoReloadSync';
-import { safeGet, safeSet } from './lib/storage';
 import {
   HOT_KEYWORDS,
   LOCAL_VIDEO_KEY_SET,
@@ -16,7 +15,6 @@ import {
 
 const STORAGE_KEYS = {
   searchHistory: 'cinenext_search_history',
-  watchHistory: 'cinenext_watch_history',
   watchlist: 'cinenext_watchlist',
   interactions: 'cinenext_interactions',
 };
@@ -56,21 +54,6 @@ function App() {
       setSearchHistory((prev) => prev.slice(0, 5));
     }
   }, [searchHistory, setSearchHistory]);
-
-  useEffect(() => {
-    const history = safeGet(STORAGE_KEYS.watchHistory, []);
-    const next = [
-      {
-        videoId: activeVideo?.id,
-        timestamp: Date.now(),
-      },
-      ...history.filter((item) => item.videoId !== activeVideo?.id),
-    ].slice(0, 30);
-
-    if (activeVideo?.id) {
-      safeSet(STORAGE_KEYS.watchHistory, next);
-    }
-  }, [activeVideo?.id]);
 
   useEffect(() => {
     currentVideoIdRef.current = activeVideo?.id || null;
