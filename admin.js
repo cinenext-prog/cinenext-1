@@ -25,6 +25,7 @@ const editCancelBtn = document.querySelector('#edit-cancel');
 const toast = document.querySelector('#toast');
 
 let assets = [];
+const expandedSeries = new Set();
 
 const safeParse = (raw, fallback) => {
   try {
@@ -346,6 +347,9 @@ const createEpisodeRow = (asset, index, total) => {
 };
 
 const createSeriesCard = (group) => {
+  const seriesKey = String(group.seriesName || '').trim() || '未分组剧名';
+  const isExpanded = expandedSeries.has(seriesKey);
+
   const wrapper = document.createElement('article');
   wrapper.className = 'series-card';
 
@@ -359,7 +363,22 @@ const createSeriesCard = (group) => {
   badge.className = 'series-badge';
   badge.textContent = group.plannedTotal > 0 ? `已上传 ${group.uploadedEpisodes} / ${group.plannedTotal} 集` : `共 ${group.uploadedEpisodes} 集`;
 
-  header.append(title, badge);
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'secondary';
+  toggleBtn.dataset.action = 'toggle-series';
+  toggleBtn.dataset.series = seriesKey;
+  toggleBtn.textContent = isExpanded ? '收起' : '展开';
+
+  const right = document.createElement('div');
+  right.className = 'series-actions';
+  right.append(badge, toggleBtn);
+
+  header.append(title, right);
+
+  const body = document.createElement('div');
+  body.className = 'series-body';
+  body.hidden = !isExpanded;
 
   const table = document.createElement('table');
   table.className = 'table';
@@ -379,7 +398,8 @@ const createSeriesCard = (group) => {
   });
 
   table.append(thead, tbody);
-  wrapper.append(header, table);
+  body.append(table);
+  wrapper.append(header, body);
 
   return wrapper;
 };
@@ -596,8 +616,23 @@ seriesList.addEventListener('click', async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
 
-  const { action, id } = target.dataset;
-  if (!action || !id) return;
+  const { action, id, series } = target.dataset;
+  if (!action) return;
+
+  if (action === 'toggle-series') {
+    const seriesKey = String(series || '').trim();
+    if (!seriesKey) return;
+
+    if (expandedSeries.has(seriesKey)) {
+      expandedSeries.delete(seriesKey);
+    } else {
+      expandedSeries.add(seriesKey);
+    }
+    render();
+    return;
+  }
+
+  if (!id) return;
 
   try {
     if (action === 'edit') {

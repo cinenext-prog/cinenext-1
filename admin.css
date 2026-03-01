@@ -181,6 +181,16 @@ button.danger {
   margin-bottom: 8px;
 }
 
+.series-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.series-body {
+  margin-top: 8px;
+}
+
 .series-header h3 {
   margin: 0;
   font-size: 16px;
