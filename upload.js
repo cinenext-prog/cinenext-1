@@ -10,6 +10,7 @@ const apiStatus = document.querySelector('#api-status');
 const seriesForm = document.querySelector('#series-form');
 const seriesNameInput = document.querySelector('#series-name');
 const seriesTotalEpisodesInput = document.querySelector('#series-total-episodes');
+const seriesFreeEpisodesInput = document.querySelector('#series-free-episodes');
 const seriesDescriptionInput = document.querySelector('#series-description');
 const seriesActorsInput = document.querySelector('#series-actors');
 const seriesResetBtn = document.querySelector('#series-reset');
@@ -18,6 +19,7 @@ const seriesStatus = document.querySelector('#series-status');
 const uploadForm = document.querySelector('#upload-form');
 const uploadSeriesSelect = document.querySelector('#upload-series-select');
 const episodeNumberInput = document.querySelector('#episode-number');
+const uploadFreeEpisodesInput = document.querySelector('#upload-free-episodes');
 const uploadNameInput = document.querySelector('#upload-name');
 const uploadFileInput = document.querySelector('#upload-file');
 const uploadDescriptionInput = document.querySelector('#upload-description');
@@ -156,6 +158,7 @@ const readSeriesDrafts = () => {
     .map((item) => ({
       seriesName: String(item.seriesName || '').trim(),
       totalEpisodes: Math.max(1, Number(item.totalEpisodes || 1)),
+      freeEpisodes: Math.max(0, Number(item.freeEpisodes || 0)),
       description: String(item.description || ''),
       actors: Array.isArray(item.actors) ? item.actors : [],
       nextEpisode: Math.max(1, Number(item.nextEpisode || 1)),
@@ -189,7 +192,7 @@ const updateSeriesSelect = () => {
   seriesDrafts.forEach((draft) => {
     const option = document.createElement('option');
     option.value = draft.seriesName;
-    option.textContent = `${draft.seriesName}（总 ${draft.totalEpisodes} 集，当前第 ${draft.nextEpisode} 集）`;
+    option.textContent = `${draft.seriesName}（总 ${draft.totalEpisodes} 集，前 ${draft.freeEpisodes} 集免费，当前第 ${draft.nextEpisode} 集）`;
     uploadSeriesSelect.appendChild(option);
   });
 
@@ -204,7 +207,10 @@ const updateSeriesSelect = () => {
   const selected = seriesDrafts.find((item) => item.seriesName === uploadSeriesSelect.value);
   if (selected) {
     episodeNumberInput.value = String(selected.nextEpisode);
-    setSeriesStatus(`已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，当前应上传第 ${selected.nextEpisode} 集。`);
+    uploadFreeEpisodesInput.value = String(selected.freeEpisodes || 0);
+    setSeriesStatus(
+      `已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，前 ${selected.freeEpisodes || 0} 集免费，当前应上传第 ${selected.nextEpisode} 集。`
+    );
   }
   renderQueuePreview();
 };
@@ -263,20 +269,26 @@ const requestUpload = async ({ file, name, metadata }) => {
 };
 
 const buildMetadata = (series) => {
-  const unlockType = uploadUnlockTypeInput.value === 'nft' ? 'nft' : 'free';
   const episodeNumber = Math.max(1, Number(episodeNumberInput.value || 1));
+  const freeEpisodes = Math.max(0, Number(uploadFreeEpisodesInput.value || 0));
+  const selectedUnlockType = uploadUnlockTypeInput.value === 'nft' ? 'nft' : 'free';
+  const isFreeEpisode = episodeNumber <= freeEpisodes;
+  const unlockType = isFreeEpisode ? 'free' : selectedUnlockType;
+  const price = isFreeEpisode ? '0' : String(uploadPriceInput.value || '0.5').trim();
 
   const metadata = {
     seriesName: series.seriesName,
     episodeNumber,
     totalEpisodes: series.totalEpisodes,
+    freeEpisodes,
+    isFreeEpisode,
     seriesDescription: series.description,
     actors: series.actors,
     unlockType,
     category: uploadCategoryInput.value.trim(),
     description: uploadDescriptionInput.value.trim(),
     nftCollectionAddress: unlockType === 'nft' ? uploadNftAddressInput.value.trim() : '',
-    price: String(uploadPriceInput.value || '0.5').trim(),
+    price,
   };
 
   const extras = safeParse(uploadMetadataJsonInput.value.trim() || '{}', null);
@@ -323,6 +335,7 @@ seriesForm.addEventListener('submit', (event) => {
   const draft = {
     seriesName,
     totalEpisodes,
+    freeEpisodes: Math.max(0, Number(seriesFreeEpisodesInput.value || 0)),
     description: seriesDescriptionInput.value.trim(),
     actors: parseActors(seriesActorsInput.value),
     nextEpisode: 1,
@@ -343,14 +356,16 @@ seriesForm.addEventListener('submit', (event) => {
   updateSeriesSelect();
   uploadSeriesSelect.value = seriesName;
   episodeNumberInput.value = '1';
+  uploadFreeEpisodesInput.value = String(draft.freeEpisodes);
 
   showToast(existingIndex >= 0 ? '已更新剧信息' : '已新建剧信息');
-  setSeriesStatus(`剧《${seriesName}》已保存，请在步骤 2 按顺序上传。`);
+  setSeriesStatus(`剧《${seriesName}》已保存：前 ${draft.freeEpisodes} 集免费，请在步骤 2 按顺序上传。`);
 });
 
 seriesResetBtn.addEventListener('click', () => {
   seriesForm.reset();
   seriesTotalEpisodesInput.value = '1';
+  seriesFreeEpisodesInput.value = '0';
   setSeriesStatus('已清空步骤 1 表单。');
 });
 
@@ -358,11 +373,15 @@ uploadSeriesSelect.addEventListener('change', () => {
   const selected = findSelectedSeries();
   if (!selected) {
     episodeNumberInput.value = '1';
+    uploadFreeEpisodesInput.value = '0';
     renderQueuePreview();
     return;
   }
   episodeNumberInput.value = String(selected.nextEpisode);
-  setSeriesStatus(`已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，当前应上传第 ${selected.nextEpisode} 集。`);
+  uploadFreeEpisodesInput.value = String(selected.freeEpisodes || 0);
+  setSeriesStatus(
+    `已选择《${selected.seriesName}》：总 ${selected.totalEpisodes} 集，前 ${selected.freeEpisodes || 0} 集免费，当前应上传第 ${selected.nextEpisode} 集。`
+  );
   renderQueuePreview();
 });
 
@@ -384,6 +403,8 @@ uploadForm.addEventListener('submit', async (event) => {
     showToast('请先在步骤 1 新建剧并选择该剧', true);
     return;
   }
+
+  selectedSeries.freeEpisodes = Math.max(0, Number(uploadFreeEpisodesInput.value || 0));
 
   const startEpisode = Math.max(1, Number(episodeNumberInput.value || 1));
   if (startEpisode !== selectedSeries.nextEpisode) {
@@ -431,7 +452,7 @@ uploadForm.addEventListener('submit', async (event) => {
       setSeriesStatus(`《${selectedSeries.seriesName}》已完成 ${selectedSeries.totalEpisodes} / ${selectedSeries.totalEpisodes} 集上传。`);
     } else {
       setSeriesStatus(
-        `《${selectedSeries.seriesName}》本次已上传 ${files.length} 集，下一集为第 ${selectedSeries.nextEpisode} 集。`
+        `《${selectedSeries.seriesName}》本次已上传 ${files.length} 集（前 ${selectedSeries.freeEpisodes} 集免费），下一集为第 ${selectedSeries.nextEpisode} 集。`
       );
     }
     episodeNumberInput.value = String(selectedSeries.nextEpisode);
@@ -450,6 +471,7 @@ uploadForm.addEventListener('submit', async (event) => {
 uploadResetBtn.addEventListener('click', () => {
   uploadForm.reset();
   uploadPriceInput.value = '0.5';
+  uploadFreeEpisodesInput.value = findSelectedSeries() ? String(findSelectedSeries().freeEpisodes || 0) : '0';
   episodeNumberInput.value = findSelectedSeries() ? String(findSelectedSeries().nextEpisode) : '1';
   setUploadProgress('已清空上传表单。');
   renderQueuePreview();
@@ -459,6 +481,8 @@ const bootstrap = () => {
   const cachedKey = localStorage.getItem(API_KEY_STORAGE) || '';
   apiKeyInput.value = cachedKey;
   uploadPriceInput.value = '0.5';
+  seriesFreeEpisodesInput.value = '0';
+  uploadFreeEpisodesInput.value = '0';
 
   seriesDrafts = readSeriesDrafts();
   updateSeriesSelect();

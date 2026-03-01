@@ -288,7 +288,7 @@ const groupBySeries = (list) => {
     .sort((left, right) => left.seriesName.localeCompare(right.seriesName, 'zh-CN'));
 };
 
-const createEpisodeRow = (asset) => {
+const createEpisodeRow = (asset, index, total) => {
   const row = document.createElement('tr');
 
   const episodeTd = document.createElement('td');
@@ -316,6 +316,22 @@ const createEpisodeRow = (asset) => {
   editBtn.dataset.id = asset.id;
   editBtn.textContent = '编辑';
 
+  const upBtn = document.createElement('button');
+  upBtn.type = 'button';
+  upBtn.className = 'secondary';
+  upBtn.dataset.action = 'move-up';
+  upBtn.dataset.id = asset.id;
+  upBtn.textContent = '上移';
+  upBtn.disabled = index === 0;
+
+  const downBtn = document.createElement('button');
+  downBtn.type = 'button';
+  downBtn.className = 'secondary';
+  downBtn.dataset.action = 'move-down';
+  downBtn.dataset.id = asset.id;
+  downBtn.textContent = '下移';
+  downBtn.disabled = index === total - 1;
+
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'danger';
@@ -323,7 +339,7 @@ const createEpisodeRow = (asset) => {
   deleteBtn.dataset.id = asset.id;
   deleteBtn.textContent = '删除';
 
-  actionsTd.append(editBtn, deleteBtn);
+  actionsTd.append(editBtn, upBtn, downBtn, deleteBtn);
   row.append(episodeTd, nameTd, statusTd, playbackTd, timeTd, actionsTd);
 
   return row;
@@ -358,8 +374,8 @@ const createSeriesCard = (group) => {
   thead.appendChild(headRow);
 
   const tbody = document.createElement('tbody');
-  group.items.forEach((asset) => {
-    tbody.appendChild(createEpisodeRow(asset));
+  group.items.forEach((asset, index) => {
+    tbody.appendChild(createEpisodeRow(asset, index, group.items.length));
   });
 
   table.append(thead, tbody);
@@ -435,6 +451,94 @@ const deleteAsset = async (id) => {
   showToast('已删除资源');
 };
 
+const moveEpisode = async (id, direction) => {
+  const current = assets.find((item) => item.id === id);
+  if (!current) {
+    throw new Error('未找到要调序的资源');
+  }
+
+  if (current.episodeNumber >= 9999) {
+    throw new Error('该资源缺少有效集数，请先编辑后再调序');
+  }
+
+  const peers = assets
+    .filter((item) => item.seriesName === current.seriesName)
+    .sort((left, right) => left.episodeNumber - right.episodeNumber || String(left.createdAt).localeCompare(String(right.createdAt)));
+
+  const currentIndex = peers.findIndex((item) => item.id === id);
+  if (currentIndex < 0) {
+    throw new Error('未找到剧集顺序');
+  }
+
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= peers.length) {
+    return;
+  }
+
+  const target = peers[targetIndex];
+  if (!target || target.episodeNumber >= 9999) {
+    throw new Error('相邻资源缺少有效集数，无法调序');
+  }
+
+  const currentEpisode = current.episodeNumber;
+  const targetEpisode = target.episodeNumber;
+
+  await requestLivepeer(`/asset/${encodeURIComponent(current.id)}`, {
+    method: 'PATCH',
+    body: {
+      name: current.name,
+      metadata: {
+        ...current.metadata,
+        seriesName: current.seriesName,
+        episodeNumber: targetEpisode,
+      },
+    },
+  });
+
+  await requestLivepeer(`/asset/${encodeURIComponent(target.id)}`, {
+    method: 'PATCH',
+    body: {
+      name: target.name,
+      metadata: {
+        ...target.metadata,
+        seriesName: target.seriesName,
+        episodeNumber: currentEpisode,
+      },
+    },
+  });
+
+  assets = assets.map((item) => {
+    if (item.id === current.id) {
+      return {
+        ...item,
+        episodeNumber: targetEpisode,
+        metadata: {
+          ...item.metadata,
+          seriesName: item.seriesName,
+          episodeNumber: targetEpisode,
+        },
+      };
+    }
+
+    if (item.id === target.id) {
+      return {
+        ...item,
+        episodeNumber: currentEpisode,
+        metadata: {
+          ...item.metadata,
+          seriesName: item.seriesName,
+          episodeNumber: currentEpisode,
+        },
+      };
+    }
+
+    return item;
+  });
+
+  render();
+  showToast('已调整顺序');
+};
+
 saveKeyBtn.addEventListener('click', () => {
   const key = readApiKey();
   if (!key) {
@@ -498,6 +602,16 @@ seriesList.addEventListener('click', async (event) => {
   try {
     if (action === 'edit') {
       openEdit(id);
+      return;
+    }
+
+    if (action === 'move-up') {
+      await moveEpisode(id, 'up');
+      return;
+    }
+
+    if (action === 'move-down') {
+      await moveEpisode(id, 'down');
       return;
     }
 

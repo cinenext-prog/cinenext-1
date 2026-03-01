@@ -43,6 +43,11 @@
           </label>
 
           <label>
+            前 X 集免费（可在步骤 2 调整）
+            <input id="series-free-episodes" type="number" min="0" step="1" value="0" />
+          </label>
+
+          <label>
             简介（可选）
             <input id="series-description" placeholder="例如：豪门甜宠短剧" />
           </label>
@@ -73,6 +78,11 @@
           <label>
             当前应上传集数
             <input id="episode-number" type="number" min="1" step="1" required value="1" readonly />
+          </label>
+
+          <label>
+            前 X 集免费（本次按此规则）
+            <input id="upload-free-episodes" type="number" min="0" step="1" value="0" />
           </label>
 
           <label>
@@ -109,7 +119,7 @@
           </label>
 
           <label>
-            价格 TON（可选）
+            每集价格 TON（免费集自动按 0 处理）
             <input id="upload-price" type="number" min="0" step="0.1" value="0.5" />
           </label>
 
