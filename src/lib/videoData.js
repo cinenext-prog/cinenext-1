@@ -7,6 +7,7 @@ export const LOCAL_VIDEO_KEYS = [
   'legacyVideos',
   'cinenext_admin_videos',
 ];
+export const LOCAL_VIDEO_KEY_SET = new Set(LOCAL_VIDEO_KEYS);
 
 const toText = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
 

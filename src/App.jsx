@@ -3,10 +3,12 @@ import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 import HomeFeed from './components/HomeFeed';
 import SearchPage from './components/SearchPage';
 import usePersistentState from './hooks/usePersistentState';
+import useTelegramSetup from './hooks/useTelegramSetup';
+import useVideoReloadSync from './hooks/useVideoReloadSync';
 import { safeGet, safeSet } from './lib/storage';
 import {
   HOT_KEYWORDS,
-  LOCAL_VIDEO_KEYS,
+  LOCAL_VIDEO_KEY_SET,
   formatCount,
   normalizeAsset,
   readLegacyVideos,
@@ -18,10 +20,6 @@ const STORAGE_KEYS = {
   watchlist: 'cinenext_watchlist',
   interactions: 'cinenext_interactions',
 };
-
-const LOCAL_VIDEO_KEY_SET = new Set(LOCAL_VIDEO_KEYS);
-
-const getTelegramWebApp = () => window.Telegram?.WebApp || null;
 
 function App() {
   const [tonConnectUI] = useTonConnectUI();
@@ -48,6 +46,8 @@ function App() {
 
   const activeVideo = videos[activeIndex] || null;
 
+  useTelegramSetup(page, setPage);
+
   useEffect(() => {
     if (searchHistory.length > 5) {
       setSearchHistory((prev) => prev.slice(0, 5));
@@ -68,57 +68,6 @@ function App() {
       safeSet(STORAGE_KEYS.watchHistory, next);
     }
   }, [activeVideo?.id]);
-
-  useEffect(() => {
-    const tg = getTelegramWebApp();
-    if (!tg) {
-      return;
-    }
-
-    tg.ready();
-    tg.expand();
-    if (typeof tg.disableVerticalSwipes === 'function') {
-      tg.disableVerticalSwipes();
-    }
-
-    const theme = tg.themeParams || {};
-    const root = document.documentElement;
-    if (theme.bg_color) {
-      root.style.setProperty('--tg-theme-bg-color', theme.bg_color);
-    }
-    if (theme.text_color) {
-      root.style.setProperty('--tg-theme-text-color', theme.text_color);
-    }
-    if (theme.hint_color) {
-      root.style.setProperty('--tg-theme-hint-color', theme.hint_color);
-    }
-    if (theme.button_color) {
-      root.style.setProperty('--tg-theme-button-color', theme.button_color);
-    }
-    if (theme.button_text_color) {
-      root.style.setProperty('--tg-theme-button-text-color', theme.button_text_color);
-    }
-  }, []);
-
-  useEffect(() => {
-    const tg = getTelegramWebApp();
-    if (!tg?.BackButton) {
-      return;
-    }
-
-    const onBack = () => setPage('home');
-    tg.BackButton.onClick(onBack);
-
-    if (page === 'search') {
-      tg.BackButton.show();
-    } else {
-      tg.BackButton.hide();
-    }
-
-    return () => {
-      tg.BackButton.offClick(onBack);
-    };
-  }, [page]);
 
   const fetchLivepeerAssets = async () => {
     const apiKey = import.meta.env.VITE_LIVEPEER_API_KEY;
@@ -199,33 +148,7 @@ function App() {
     };
   }, [reloadTick]);
 
-  useEffect(() => {
-    const requestReload = () => {
-      setReloadTick((prev) => prev + 1);
-    };
-
-    const onStorage = (event) => {
-      if (!event.key || LOCAL_VIDEO_KEY_SET.has(event.key)) {
-        requestReload();
-      }
-    };
-
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        requestReload();
-      }
-    };
-
-    window.addEventListener('storage', onStorage);
-    window.addEventListener('focus', requestReload);
-    document.addEventListener('visibilitychange', onVisibility);
-
-    return () => {
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('focus', requestReload);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
+  useVideoReloadSync(() => setReloadTick((prev) => prev + 1), LOCAL_VIDEO_KEY_SET);
 
   const checkNftAccess = async (video, address) => {
     if (!video?.nftCollectionAddress) {
