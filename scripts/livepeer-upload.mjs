@@ -12,7 +12,6 @@ const parseArgs = (argv) => {
     startEpisode: 1,
     freeEpisodes: 0,
     pricePerEpisode: 0.5,
-    staticMp4: false,
     dryRun: false,
   };
 
@@ -62,9 +61,6 @@ const parseArgs = (argv) => {
       case 'name-prefix':
         options.namePrefix = readValue();
         break;
-      case 'static-mp4':
-        options.staticMp4 = true;
-        break;
       case 'dry-run':
         options.dryRun = true;
         break;
@@ -88,7 +84,6 @@ const printHelp = () => {
   --description <简介>
   --actors <演员A,演员B>
   --name-prefix <名称前缀>
-  --static-mp4               让 Livepeer 生成静态 MP4
   --dry-run                  仅打印计划，不实际上传
   --help
 
@@ -127,7 +122,7 @@ const resolveFileList = (rawFiles) => {
   return files;
 };
 
-const requestUploadTicket = async ({ apiKey, name, metadata, staticMp4 }) => {
+const requestUploadTicket = async ({ apiKey, name }) => {
   const response = await fetch(`${API_BASE}/asset/request-upload`, {
     method: 'POST',
     headers: {
@@ -136,8 +131,6 @@ const requestUploadTicket = async ({ apiKey, name, metadata, staticMp4 }) => {
     },
     body: JSON.stringify({
       name,
-      metadata,
-      staticMp4,
     }),
   });
 
@@ -165,6 +158,39 @@ const requestUploadTicket = async ({ apiKey, name, metadata, staticMp4 }) => {
   }
 
   return parsed;
+};
+
+const patchAssetMetadata = async ({ apiKey, assetId, name, metadata }) => {
+  const response = await fetch(`${API_BASE}/asset/${encodeURIComponent(assetId)}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name,
+      metadata,
+    }),
+  });
+
+  const text = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    const reason =
+      parsed?.error ||
+      parsed?.message ||
+      parsed?.details ||
+      (Array.isArray(parsed?.errors) && parsed.errors[0]) ||
+      text ||
+      `HTTP ${response.status}`;
+    throw new Error(`写入 metadata 失败: ${reason}`);
+  }
 };
 
 const directUploadFile = async ({ uploadUrl, filePath }) => {
@@ -244,15 +270,24 @@ const run = async () => {
     const ticket = await requestUploadTicket({
       apiKey: options.apiKey,
       name: uploadName,
-      metadata,
-      staticMp4: options.staticMp4,
     });
 
     console.log(`[${index + 1}/${files.length}] 开始直传文件: ${path.basename(filePath)}`);
     await directUploadFile({ uploadUrl: ticket.url, filePath });
 
     const playbackId = ticket?.asset?.playbackId || ticket?.asset?.playbackID || '-';
-    const assetId = ticket?.asset?.id || '-';
+    const assetId = ticket?.asset?.id || '';
+
+    if (assetId) {
+      console.log(`[${index + 1}/${files.length}] 回写 metadata: asset=${assetId}`);
+      await patchAssetMetadata({
+        apiKey: options.apiKey,
+        assetId,
+        name: uploadName,
+        metadata,
+      });
+    }
+
     console.log(`[${index + 1}/${files.length}] 上传完成: asset=${assetId}, playbackId=${playbackId}`);
   }
 
