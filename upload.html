@@ -10,7 +10,7 @@
     <main class="page">
       <header class="header">
         <h1>上传视频</h1>
-        <p>独立上传页面：填写剧名与集数后上传，回到管理首页会自动按剧分组显示。</p>
+        <p>两步骤上传：先新建剧信息，再按集数顺序逐集上传视频。</p>
       </header>
 
       <section class="panel">
@@ -30,16 +30,49 @@
       </section>
 
       <section class="panel">
-        <h2>上传表单</h2>
-        <form id="upload-form" class="form-grid">
+        <h2>步骤 1：新建剧</h2>
+        <form id="series-form" class="form-grid">
           <label>
-            剧名（seriesName）
+            剧名
             <input id="series-name" required placeholder="例如：总裁的替身新娘" />
           </label>
 
           <label>
-            集数（episodeNumber）
-            <input id="episode-number" type="number" min="1" step="1" required value="1" />
+            总集数
+            <input id="series-total-episodes" type="number" min="1" step="1" required value="1" />
+          </label>
+
+          <label>
+            简介（可选）
+            <input id="series-description" placeholder="例如：豪门甜宠短剧" />
+          </label>
+
+          <label>
+            演员（可选，逗号分隔）
+            <input id="series-actors" placeholder="演员A, 演员B" />
+          </label>
+
+          <div class="actions">
+            <button type="submit" id="series-submit">保存剧信息</button>
+            <button type="button" id="series-reset" class="secondary">清空</button>
+          </div>
+        </form>
+        <p id="series-status" class="tip">还未创建剧信息。</p>
+      </section>
+
+      <section class="panel">
+        <h2>步骤 2：按顺序上传视频</h2>
+        <form id="upload-form" class="form-grid">
+          <label>
+            选择剧
+            <select id="upload-series-select" required>
+              <option value="">请先在步骤 1 新建剧</option>
+            </select>
+          </label>
+
+          <label>
+            当前应上传集数
+            <input id="episode-number" type="number" min="1" step="1" required value="1" readonly />
           </label>
 
           <label>

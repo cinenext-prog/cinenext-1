@@ -80,6 +80,12 @@ const parseEpisodeNumber = (value) => {
   return 0;
 };
 
+const parsePositiveInt = (value) => {
+  const output = Number(value);
+  if (!Number.isFinite(output) || output <= 0) return 0;
+  return Math.floor(output);
+};
+
 const guessEpisodeFromName = (name) => {
   const match = String(name || '').match(/第\s*(\d+)\s*集/i);
   if (!match) return 0;
@@ -114,6 +120,7 @@ const resolveEpisodeNumber = (asset, metadata) => {
 
 const normalizeAsset = (asset) => {
   const metadata = normalizeMetadata(asset.metadata);
+  const totalEpisodes = parsePositiveInt(metadata.totalEpisodes || metadata.totalEpisode || metadata.episodes);
   return {
     id: String(asset.id || ''),
     name: String(asset.name || '未命名资源'),
@@ -123,6 +130,7 @@ const normalizeAsset = (asset) => {
     metadata,
     seriesName: resolveSeriesName(asset, metadata),
     episodeNumber: resolveEpisodeNumber(asset, metadata),
+    totalEpisodes,
   };
 };
 
@@ -268,10 +276,13 @@ const groupBySeries = (list) => {
         return String(left.createdAt).localeCompare(String(right.createdAt));
       });
 
+      const plannedTotal = sortedItems.reduce((maxValue, item) => Math.max(maxValue, item.totalEpisodes || 0), 0);
+
       return {
         seriesName,
         items: sortedItems,
-        totalEpisodes: sortedItems.length,
+        uploadedEpisodes: sortedItems.length,
+        plannedTotal,
       };
     })
     .sort((left, right) => left.seriesName.localeCompare(right.seriesName, 'zh-CN'));
@@ -330,7 +341,7 @@ const createSeriesCard = (group) => {
 
   const badge = document.createElement('span');
   badge.className = 'series-badge';
-  badge.textContent = `共 ${group.totalEpisodes} 集`;
+  badge.textContent = group.plannedTotal > 0 ? `已上传 ${group.uploadedEpisodes} / ${group.plannedTotal} 集` : `共 ${group.uploadedEpisodes} 集`;
 
   header.append(title, badge);
 
