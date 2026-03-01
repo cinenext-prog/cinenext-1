@@ -4,6 +4,7 @@ const COMPAT_STORAGE_KEY = 'legacyVideos';
 const form = document.querySelector('#video-form');
 const titleInput = document.querySelector('#title');
 const playbackIdInput = document.querySelector('#playbackId');
+const playbackUrlInput = document.querySelector('#playbackUrl');
 const episodeInput = document.querySelector('#episode');
 const unlockTypeInput = document.querySelector('#unlockType');
 const nftAddressInput = document.querySelector('#nftCollectionAddress');
@@ -59,6 +60,8 @@ const parseCsv = (value) =>
     .filter(Boolean);
 
 const randomStat = (min, max) => Math.floor(min + Math.random() * (max - min));
+const looksLikeLivepeerPlaybackId = (value) => /^[a-zA-Z0-9_-]{8,}$/.test(value);
+const looksLikePlayableUrl = (value) => /^https:\/\/.+\.(m3u8|mp4)(\?.*)?$/i.test(value);
 
 const toRow = (video, index) => {
   const tr = document.createElement('tr');
@@ -94,12 +97,19 @@ const render = () => {
 const buildVideo = () => {
   const title = titleInput.value.trim();
   const playbackId = playbackIdInput.value.trim();
+  const playbackUrl = playbackUrlInput.value.trim();
 
   if (!title) {
     throw new Error('请填写剧名');
   }
   if (!playbackId) {
     throw new Error('请填写 Playback ID');
+  }
+  if (!looksLikeLivepeerPlaybackId(playbackId)) {
+    throw new Error('Playback ID 格式不正确，请填写 Livepeer 真实 Playback ID（不要填 1/2/3）');
+  }
+  if (playbackUrl && !looksLikePlayableUrl(playbackUrl)) {
+    throw new Error('播放地址格式不正确，请填写 https 开头的 m3u8/mp4 链接');
   }
 
   const unlockType = unlockTypeInput.value === 'nft' ? 'nft' : 'free';
@@ -109,7 +119,7 @@ const buildVideo = () => {
     id: `legacy-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title,
     playbackId,
-    playbackUrl: `https://livepeercdn.com/hls/${playbackId}/index.m3u8`,
+    playbackUrl: playbackUrl || `https://livepeercdn.com/hls/${playbackId}/index.m3u8`,
     unlockType,
     nftCollectionAddress: unlockType === 'nft' ? nftAddressInput.value.trim() : '',
     price: String(priceInput.value || '0.5'),
@@ -166,6 +176,8 @@ resetFormBtn.addEventListener('click', () => {
   episodeInput.value = '1';
   priceInput.value = '0.5';
   unlockTypeInput.value = 'free';
+  playbackUrlInput.value = '';
+  playbackUrlInput.value = '';
 });
 
 refreshBtn.addEventListener('click', () => {

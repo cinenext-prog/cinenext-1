@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CineNext 剧集管理</title>
-    <script type="module" crossorigin src="/cinenext-1/assets/admin-BoB2TUgs.js"></script>
+    <script type="module" crossorigin src="/cinenext-1/assets/admin-CPN43y8g.js"></script>
     <link rel="modulepreload" crossorigin href="/cinenext-1/assets/modulepreload-polyfill-B5Qt9EMX.js">
     <link rel="stylesheet" crossorigin href="/cinenext-1/assets/admin-jRsOWpb5.css">
   </head>
@@ -26,6 +26,11 @@
           <label>
             Playback ID
             <input id="playbackId" required placeholder="例如：abcd1234efgh" />
+          </label>
+
+          <label>
+            播放地址（可选）
+            <input id="playbackUrl" placeholder="例如：https://.../index.m3u8 或 mp4 链接" />
           </label>
 
           <label>
@@ -103,6 +108,13 @@
           </label>
         </div>
         <p class="tip">导入会覆盖当前列表，请先导出备份。</p>
+      </section>
+
+      <section class="panel">
+        <h2>播放失败排查</h2>
+        <p class="tip">1）`Playback ID` 不能填 1/2/3 这种数字，必须是 Livepeer 真实 ID。</p>
+        <p class="tip">2）如果你有完整 m3u8/mp4 地址，可直接填“播放地址”。</p>
+        <p class="tip">3）GitHub Pages 不支持私有签名流，私有视频请用 Vercel 部署签名接口。</p>
       </section>
 
       <p id="toast" class="toast" aria-live="polite"></p>

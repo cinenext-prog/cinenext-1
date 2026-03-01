@@ -27,6 +27,11 @@
           </label>
 
           <label>
+            播放地址（可选）
+            <input id="playbackUrl" placeholder="例如：https://.../index.m3u8 或 mp4 链接" />
+          </label>
+
+          <label>
             集数
             <input id="episode" type="number" min="1" step="1" value="1" />
           </label>
@@ -101,6 +106,13 @@
           </label>
         </div>
         <p class="tip">导入会覆盖当前列表，请先导出备份。</p>
+      </section>
+
+      <section class="panel">
+        <h2>播放失败排查</h2>
+        <p class="tip">1）`Playback ID` 不能填 1/2/3 这种数字，必须是 Livepeer 真实 ID。</p>
+        <p class="tip">2）如果你有完整 m3u8/mp4 地址，可直接填“播放地址”。</p>
+        <p class="tip">3）GitHub Pages 不支持私有签名流，私有视频请用 Vercel 部署签名接口。</p>
       </section>
 
       <p id="toast" class="toast" aria-live="polite"></p>
