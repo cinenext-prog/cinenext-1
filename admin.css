@@ -191,6 +191,36 @@ button.danger {
   margin-top: 8px;
 }
 
+.series-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.series-info-item {
+  border: 1px solid #2a3040;
+  border-radius: 8px;
+  padding: 8px;
+  background: #101521;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.series-info-label {
+  color: #97a2bb;
+  font-size: 12px;
+}
+
+.series-info-value {
+  color: #eef1f7;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .series-header h3 {
   margin: 0;
   font-size: 16px;
@@ -310,5 +340,9 @@ button.danger {
 
   .list-head {
     align-items: flex-start;
+  }
+
+  .series-info-grid {
+    grid-template-columns: 1fr;
   }
 }

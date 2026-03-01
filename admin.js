@@ -279,11 +279,31 @@ const groupBySeries = (list) => {
 
       const plannedTotal = sortedItems.reduce((maxValue, item) => Math.max(maxValue, item.totalEpisodes || 0), 0);
 
+      const seriesInfoSource =
+        sortedItems.find((item) => item.episodeNumber === 1) ||
+        sortedItems.find((item) => item.episodeNumber < 9999) ||
+        sortedItems[0];
+
+      const sourceMeta = seriesInfoSource?.metadata || {};
+      const freeEpisodes = Math.max(0, Number(sourceMeta.freeEpisodes || 0));
+      const defaultPrice = String(sourceMeta.price || '').trim();
+      const description = String(sourceMeta.seriesDescription || '').trim();
+      const actors = Array.isArray(sourceMeta.actors)
+        ? sourceMeta.actors.filter(Boolean).map((item) => String(item).trim())
+        : String(sourceMeta.actors || '')
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean);
+
       return {
         seriesName,
         items: sortedItems,
         uploadedEpisodes: sortedItems.length,
         plannedTotal,
+        freeEpisodes,
+        defaultPrice,
+        description,
+        actors,
       };
     })
     .sort((left, right) => left.seriesName.localeCompare(right.seriesName, 'zh-CN'));
@@ -380,6 +400,34 @@ const createSeriesCard = (group) => {
   body.className = 'series-body';
   body.hidden = !isExpanded;
 
+  const infoGrid = document.createElement('div');
+  infoGrid.className = 'series-info-grid';
+
+  const infoItems = [
+    { label: '已上传集数', value: String(group.uploadedEpisodes) },
+    { label: '总集数', value: group.plannedTotal > 0 ? String(group.plannedTotal) : '-' },
+    { label: '前 X 集免费', value: String(group.freeEpisodes || 0) },
+    { label: '默认价格', value: group.defaultPrice ? `${group.defaultPrice} TON` : '-' },
+    { label: '演员', value: group.actors.length ? group.actors.join(' / ') : '-' },
+    { label: '简介', value: group.description || '-' },
+  ];
+
+  infoItems.forEach((item) => {
+    const block = document.createElement('div');
+    block.className = 'series-info-item';
+
+    const label = document.createElement('span');
+    label.className = 'series-info-label';
+    label.textContent = item.label;
+
+    const value = document.createElement('strong');
+    value.className = 'series-info-value';
+    value.textContent = item.value;
+
+    block.append(label, value);
+    infoGrid.appendChild(block);
+  });
+
   const table = document.createElement('table');
   table.className = 'table';
 
@@ -398,7 +446,7 @@ const createSeriesCard = (group) => {
   });
 
   table.append(thead, tbody);
-  body.append(table);
+  body.append(infoGrid, table);
   wrapper.append(header, body);
 
   return wrapper;
