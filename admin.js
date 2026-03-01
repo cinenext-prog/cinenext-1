@@ -1,0 +1,232 @@
+const STORAGE_KEY = 'cinenext_videos';
+
+const form = document.querySelector('#video-form');
+const titleInput = document.querySelector('#title');
+const playbackIdInput = document.querySelector('#playbackId');
+const episodeInput = document.querySelector('#episode');
+const unlockTypeInput = document.querySelector('#unlockType');
+const nftAddressInput = document.querySelector('#nftCollectionAddress');
+const priceInput = document.querySelector('#price');
+const actorsInput = document.querySelector('#actors');
+const keywordsInput = document.querySelector('#keywords');
+
+const tbody = document.querySelector('#video-tbody');
+const table = document.querySelector('#video-table');
+const emptyState = document.querySelector('#empty-state');
+const toast = document.querySelector('#toast');
+
+const resetFormBtn = document.querySelector('#reset-form');
+const refreshBtn = document.querySelector('#refresh-list');
+const clearAllBtn = document.querySelector('#clear-all');
+const exportBtn = document.querySelector('#export-json');
+const importInput = document.querySelector('#import-json');
+
+const safeParse = (raw, fallback) => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+};
+
+const readList = () => {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return [];
+  const data = safeParse(raw, []);
+  return Array.isArray(data) ? data : [];
+};
+
+const writeList = (list) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+};
+
+const showToast = (text, isError = false) => {
+  toast.textContent = text;
+  toast.style.color = isError ? '#ff9d9d' : '#89d6a8';
+  window.setTimeout(() => {
+    if (toast.textContent === text) {
+      toast.textContent = '';
+    }
+  }, 2200);
+};
+
+const parseCsv = (value) =>
+  String(value || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+const randomStat = (min, max) => Math.floor(min + Math.random() * (max - min));
+
+const toRow = (video, index) => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${video.title || '-'}</td>
+    <td>${video.episode || index + 1}</td>
+    <td>${video.playbackId || '-'}</td>
+    <td>${video.unlockType === 'nft' ? 'NFT' : '免费'}</td>
+    <td class="actions-cell">
+      <button type="button" data-action="delete" data-id="${video.id}">删除</button>
+    </td>
+  `;
+  return tr;
+};
+
+const render = () => {
+  const list = readList();
+  tbody.innerHTML = '';
+
+  if (list.length === 0) {
+    table.hidden = true;
+    emptyState.hidden = false;
+    return;
+  }
+
+  table.hidden = false;
+  emptyState.hidden = true;
+  list.forEach((video, index) => {
+    tbody.appendChild(toRow(video, index));
+  });
+};
+
+const buildVideo = () => {
+  const title = titleInput.value.trim();
+  const playbackId = playbackIdInput.value.trim();
+
+  if (!title) {
+    throw new Error('请填写剧名');
+  }
+  if (!playbackId) {
+    throw new Error('请填写 Playback ID');
+  }
+
+  const unlockType = unlockTypeInput.value === 'nft' ? 'nft' : 'free';
+  const episode = Math.max(1, Number(episodeInput.value || 1));
+
+  return {
+    id: `legacy-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title,
+    playbackId,
+    playbackUrl: `https://livepeercdn.com/hls/${playbackId}/index.m3u8`,
+    unlockType,
+    nftCollectionAddress: unlockType === 'nft' ? nftAddressInput.value.trim() : '',
+    price: String(priceInput.value || '0.5'),
+    actors: parseCsv(actorsInput.value),
+    keywords: parseCsv(keywordsInput.value),
+    episode,
+    likes: randomStat(1000, 6000),
+    views: randomStat(10000, 300000),
+  };
+};
+
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+
+  try {
+    const video = buildVideo();
+    const list = readList();
+
+    if (list.some((item) => item.playbackId === video.playbackId)) {
+      showToast('该 Playback ID 已存在', true);
+      return;
+    }
+
+    list.unshift(video);
+    writeList(list);
+    form.reset();
+    episodeInput.value = '1';
+    priceInput.value = '0.5';
+    unlockTypeInput.value = 'free';
+    render();
+    showToast('已添加短剧');
+  } catch (error) {
+    showToast(error.message || '添加失败', true);
+  }
+});
+
+tbody.addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+
+  if (target.dataset.action !== 'delete') return;
+  const id = target.dataset.id;
+  if (!id) return;
+
+  const list = readList();
+  const next = list.filter((item) => item.id !== id);
+  writeList(next);
+  render();
+  showToast('已删除');
+});
+
+resetFormBtn.addEventListener('click', () => {
+  form.reset();
+  episodeInput.value = '1';
+  priceInput.value = '0.5';
+  unlockTypeInput.value = 'free';
+});
+
+refreshBtn.addEventListener('click', () => {
+  render();
+  showToast('已刷新');
+});
+
+clearAllBtn.addEventListener('click', () => {
+  const ok = window.confirm('确认清空全部短剧吗？');
+  if (!ok) return;
+  writeList([]);
+  render();
+  showToast('已清空');
+});
+
+exportBtn.addEventListener('click', () => {
+  const list = readList();
+  const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'cinenext_videos.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('已导出 JSON');
+});
+
+importInput.addEventListener('change', async () => {
+  const file = importInput.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const parsed = safeParse(text, null);
+    if (!Array.isArray(parsed)) {
+      throw new Error('JSON 格式无效，必须是数组');
+    }
+
+    const normalized = parsed
+      .map((item, index) => ({
+        id: String(item.id || `legacy-import-${Date.now()}-${index}`),
+        title: String(item.title || `短剧 ${index + 1}`),
+        playbackId: String(item.playbackId || '').trim(),
+        playbackUrl: String(item.playbackUrl || `https://livepeercdn.com/hls/${item.playbackId || ''}/index.m3u8`),
+        unlockType: item.unlockType === 'nft' ? 'nft' : 'free',
+        nftCollectionAddress: String(item.nftCollectionAddress || ''),
+        price: String(item.price || '0.5'),
+        actors: Array.isArray(item.actors) ? item.actors : [],
+        keywords: Array.isArray(item.keywords) ? item.keywords : [],
+        episode: Math.max(1, Number(item.episode || index + 1)),
+        likes: Number(item.likes || randomStat(1000, 6000)),
+        views: Number(item.views || randomStat(10000, 300000)),
+      }))
+      .filter((item) => item.playbackId);
+
+    writeList(normalized);
+    render();
+    showToast('导入成功');
+  } catch (error) {
+    showToast(error.message || '导入失败', true);
+  } finally {
+    importInput.value = '';
+  }
+});
+
+render();

@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const htmlInputs = {
+  main: '/index.html',
+  admin: '/admin.html',
+};
+
 export default defineConfig({
   // 本地开发使用 /，生产构建使用 /cinenext-1/
   base: process.env.NODE_ENV === 'production' ? '/cinenext-1/' : '/',
@@ -13,6 +18,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: true,
+    rollupOptions: {
+      input: htmlInputs,
+    },
   }
 });
