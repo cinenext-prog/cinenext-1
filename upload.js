@@ -22,13 +22,7 @@ const episodeNumberInput = document.querySelector('#episode-number');
 const uploadFreeEpisodesInput = document.querySelector('#upload-free-episodes');
 const uploadNameInput = document.querySelector('#upload-name');
 const uploadFileInput = document.querySelector('#upload-file');
-const uploadDescriptionInput = document.querySelector('#upload-description');
-const uploadCategoryInput = document.querySelector('#upload-category');
-const uploadUnlockTypeInput = document.querySelector('#upload-unlock-type');
-const uploadNftAddressInput = document.querySelector('#upload-nft-address');
 const uploadPriceInput = document.querySelector('#upload-price');
-const uploadEncryptedInput = document.querySelector('#upload-encrypted');
-const uploadMetadataJsonInput = document.querySelector('#upload-metadata-json');
 const uploadResetBtn = document.querySelector('#upload-reset');
 const uploadProgress = document.querySelector('#upload-progress');
 const queueSummary = document.querySelector('#queue-summary');
@@ -239,7 +233,6 @@ const requestUpload = async ({ file, name, metadata }) => {
     filename: file.name,
     filetype: file.type || 'video/mp4',
     name,
-    encrypted: uploadEncryptedInput.checked ? 'true' : 'false',
   };
 
   Object.entries(metadata).forEach(([key, value]) => {
@@ -271,9 +264,7 @@ const requestUpload = async ({ file, name, metadata }) => {
 const buildMetadata = (series) => {
   const episodeNumber = Math.max(1, Number(episodeNumberInput.value || 1));
   const freeEpisodes = Math.max(0, Number(uploadFreeEpisodesInput.value || 0));
-  const selectedUnlockType = uploadUnlockTypeInput.value === 'nft' ? 'nft' : 'free';
   const isFreeEpisode = episodeNumber <= freeEpisodes;
-  const unlockType = isFreeEpisode ? 'free' : selectedUnlockType;
   const price = isFreeEpisode ? '0' : String(uploadPriceInput.value || '0.5').trim();
 
   const metadata = {
@@ -284,21 +275,9 @@ const buildMetadata = (series) => {
     isFreeEpisode,
     seriesDescription: series.description,
     actors: series.actors,
-    unlockType,
-    category: uploadCategoryInput.value.trim(),
-    description: uploadDescriptionInput.value.trim(),
-    nftCollectionAddress: unlockType === 'nft' ? uploadNftAddressInput.value.trim() : '',
+    unlockType: isFreeEpisode ? 'free' : 'paid',
     price,
   };
-
-  const extras = safeParse(uploadMetadataJsonInput.value.trim() || '{}', null);
-  if (extras === null || typeof extras !== 'object' || Array.isArray(extras)) {
-    throw new Error('额外 metadata 必须是 JSON 对象');
-  }
-
-  Object.entries(extras).forEach(([key, value]) => {
-    metadata[key] = value;
-  });
 
   return metadata;
 };
