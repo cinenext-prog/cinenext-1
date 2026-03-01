@@ -365,4 +365,4 @@ const VideoPlayer = ({
   );
 };
 
-export default VideoPlayer;
+export default React.memo(VideoPlayer);

@@ -1,6 +1,8 @@
 import React from 'react';
 import VideoPlayer from './VideoPlayer';
 
+const RENDER_RADIUS = 2;
+
 function HomeFeed({
   loading,
   videos,
@@ -50,11 +52,21 @@ function HomeFeed({
 
       <div className="feed-scroll" ref={feedRef} onScroll={onFeedScroll}>
         {videos.map((video, index) => {
-          const interaction = getInteraction(video);
+          const shouldRenderHeavy = Math.abs(index - activeIndex) <= RENDER_RADIUS;
           const blocked = video.unlockType === 'nft' && !accessMap[video.id];
           const lockLabel = wallet
             ? `需 NFT 解锁 · ${video.price} TON`
             : '连接钱包后解锁观看';
+
+          if (!shouldRenderHeavy) {
+            return (
+              <section key={video.id} className="feed-item">
+                <img className="video-poster" src={video.coverUrl} alt={video.title} loading="lazy" />
+              </section>
+            );
+          }
+
+          const interaction = getInteraction(video);
 
           return (
             <section key={video.id} className="feed-item">
@@ -63,7 +75,7 @@ function HomeFeed({
                 poster={video.coverUrl}
                 title={video.title}
                 active={index === activeIndex}
-                preload={Math.abs(index - activeIndex) <= 3}
+                preload={true}
                 blocked={blocked}
                 lockLabel={unlockingId === video.id ? '解锁处理中...' : lockLabel}
                 onUnlock={() => requestUnlock(video)}
