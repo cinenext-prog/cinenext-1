@@ -26,9 +26,17 @@ app.all('/api/request-upload', async (req, res) => {
   await requestUploadHandler(req, res);
 });
 
+app.use('/cinenext-1', express.static(distDir, { extensions: ['html'] }));
 app.use(express.static(distDir, { extensions: ['html'] }));
 
 app.get(/.*/, (req, res) => {
+  if (req.path.startsWith('/cinenext-1/')) {
+    const subPath = req.path.slice('/cinenext-1'.length);
+    if (subPath.endsWith('.html')) {
+      return res.sendFile(path.join(distDir, subPath));
+    }
+  }
+
   if (req.path.endsWith('.html')) {
     return res.sendFile(path.join(distDir, req.path));
   }
