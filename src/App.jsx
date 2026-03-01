@@ -12,6 +12,12 @@ const STORAGE_KEYS = {
 };
 
 const HOT_KEYWORDS = ['短剧', '逆袭', '豪门', '重生', '甜宠'];
+const LOCAL_VIDEO_KEYS = [
+  STORAGE_KEYS.legacyVideos,
+  'legacyVideos',
+  'cinenext_videos',
+  'cinenext_admin_videos',
+];
 
 const safeGet = (key, fallback) => {
   try {
@@ -91,21 +97,50 @@ const normalizeLegacyVideo = (video, index) => {
     return null;
   }
 
+  const episode = Number(video?.episode || index + 1) || index + 1;
+  const likes = Number(video?.likes || 1000 + index * 87);
+  const views = Number(video?.views || 10000 + index * 529);
+  const unlockType = video?.unlockType === 'nft' ? 'nft' : 'free';
+  const actors = Array.isArray(video?.actors) ? video.actors : [];
+  const keywords = Array.isArray(video?.keywords) ? video.keywords : [];
+
   return {
     id: String(video?.id || `legacy-${playbackId}`),
     playbackId,
     playbackUrl: toText(video?.playbackUrl, toPlaybackUrl(playbackId)),
     coverUrl: toCoverUrl(playbackId),
     title: toText(video?.title, `短剧 ${index + 1}`),
-    episode: index + 1,
-    likes: 1000 + index * 87,
-    views: 10000 + index * 529,
-    actors: [],
-    keywords: [],
-    unlockType: 'free',
-    nftCollectionAddress: '',
-    price: '0.5',
+    episode,
+    likes,
+    views,
+    actors,
+    keywords,
+    unlockType,
+    nftCollectionAddress: toText(video?.nftCollectionAddress),
+    price: toText(video?.price, '0.5'),
   };
+};
+
+const readLegacyVideos = () => {
+  const all = [];
+  LOCAL_VIDEO_KEYS.forEach((key) => {
+    const list = safeGet(key, []);
+    if (Array.isArray(list)) {
+      all.push(...list);
+    }
+  });
+
+  const normalized = all.map(normalizeLegacyVideo).filter(Boolean);
+  const unique = new Map();
+
+  normalized.forEach((video) => {
+    const sig = `${video.playbackId}::${video.episode}::${video.title}`;
+    if (!unique.has(sig)) {
+      unique.set(sig, video);
+    }
+  });
+
+  return [...unique.values()];
 };
 
 const formatCount = (value) => {
@@ -262,9 +297,7 @@ function App() {
           remoteError = error instanceof Error ? error.message : '获取云端资源失败';
         }
 
-        const legacyVideos = safeGet(STORAGE_KEYS.legacyVideos, [])
-          .map(normalizeLegacyVideo)
-          .filter(Boolean);
+        const legacyVideos = readLegacyVideos();
 
         const remoteMap = new Map();
         remoteVideos.forEach((video) => {
