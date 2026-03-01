@@ -18,6 +18,7 @@ const VideoPlayer = ({
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const longPressTimerRef = useRef(null);
+  const didBootstrapAutoplayRef = useRef(false);
 
   const [isPaused, setIsPaused] = useState(false);
   const [showSpeedSheet, setShowSpeedSheet] = useState(false);
@@ -34,12 +35,29 @@ const VideoPlayer = ({
       return;
     }
 
-    const tryPlay = () => {
+    const tryPlay = (mutedFallback = false) => {
+      if (mutedFallback) {
+        video.defaultMuted = true;
+        video.muted = true;
+      }
+
       const playPromise = video.play();
       if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {
-          setIsPaused(true);
-        });
+        playPromise
+          .then(() => {
+            if (mutedFallback) {
+              didBootstrapAutoplayRef.current = true;
+            }
+          })
+          .catch(() => {
+            if (!mutedFallback && !didBootstrapAutoplayRef.current) {
+              tryPlay(true);
+              return;
+            }
+            setIsPaused(true);
+          });
+      } else if (mutedFallback) {
+        didBootstrapAutoplayRef.current = true;
       }
     };
 
