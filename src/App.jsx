@@ -136,6 +136,7 @@ function App() {
 
   const feedRef = useRef(null);
   const pendingScrollIndexRef = useRef(null);
+  const touchStartYRef = useRef(null);
 
   const activeVideo = videos[activeIndex] || null;
 
@@ -178,6 +179,9 @@ function App() {
 
     tg.ready();
     tg.expand();
+    if (typeof tg.disableVerticalSwipes === 'function') {
+      tg.disableVerticalSwipes();
+    }
 
     const theme = tg.themeParams || {};
     const root = document.documentElement;
@@ -247,25 +251,33 @@ function App() {
       setLoadError('');
 
       try {
-        const remoteVideos = await fetchLivepeerAssets();
+        let remoteVideos = [];
+        let remoteError = '';
+
+        try {
+          remoteVideos = await fetchLivepeerAssets();
+        } catch (error) {
+          remoteError = error instanceof Error ? error.message : '获取云端资源失败';
+        }
+
         const legacyVideos = safeGet(STORAGE_KEYS.legacyVideos, [])
           .map(normalizeLegacyVideo)
           .filter(Boolean);
 
-        const mergedMap = new Map();
-        [...remoteVideos, ...legacyVideos].forEach((video) => {
-          if (!mergedMap.has(video.playbackId)) {
-            mergedMap.set(video.playbackId, video);
+        const remoteMap = new Map();
+        remoteVideos.forEach((video) => {
+          if (!remoteMap.has(video.playbackId)) {
+            remoteMap.set(video.playbackId, video);
           }
         });
 
-        const nextVideos = [...mergedMap.values()];
+        const nextVideos = [...remoteMap.values(), ...legacyVideos];
 
         if (!cancelled) {
           setVideos(nextVideos);
           setActiveIndex(0);
           if (nextVideos.length === 0) {
-            setLoadError('暂无可播放内容，请配置 Livepeer API Key 或先添加资源。');
+            setLoadError(remoteError || '暂无可播放内容，请配置 Livepeer API Key 或先添加资源。');
           }
         }
       } catch (error) {
@@ -478,6 +490,42 @@ function App() {
     setActiveIndex(safeIndex);
   };
 
+  const onFeedTouchStart = (event) => {
+    touchStartYRef.current = event.touches?.[0]?.clientY ?? null;
+  };
+
+  const onFeedTouchEnd = (event) => {
+    if (!feedRef.current || videos.length === 0 || touchStartYRef.current === null) {
+      return;
+    }
+
+    const endY = event.changedTouches?.[0]?.clientY;
+    if (typeof endY !== 'number') {
+      touchStartYRef.current = null;
+      return;
+    }
+
+    const deltaY = touchStartYRef.current - endY;
+    touchStartYRef.current = null;
+
+    if (Math.abs(deltaY) < 40) {
+      return;
+    }
+
+    const direction = deltaY > 0 ? 1 : -1;
+    const nextIndex = Math.min(videos.length - 1, Math.max(0, activeIndex + direction));
+
+    if (nextIndex === activeIndex) {
+      return;
+    }
+
+    setActiveIndex(nextIndex);
+    feedRef.current.scrollTo({
+      top: feedRef.current.clientHeight * nextIndex,
+      behavior: 'smooth',
+    });
+  };
+
   const navigateToHomeVideo = (videoId, keyword = '') => {
     const idx = videos.findIndex((video) => video.id === videoId);
     if (idx < 0) {
@@ -576,7 +624,13 @@ function App() {
           </div>
         </header>
 
-        <div className="feed-scroll" ref={feedRef} onScroll={onFeedScroll}>
+        <div
+          className="feed-scroll"
+          ref={feedRef}
+          onScroll={onFeedScroll}
+          onTouchStart={onFeedTouchStart}
+          onTouchEnd={onFeedTouchEnd}
+        >
           {videos.map((video, index) => {
             const interaction = getInteraction(video);
             const blocked = video.unlockType === 'nft' && !accessMap[video.id];

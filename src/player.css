@@ -5,7 +5,7 @@
   height: 100%;
   background: #000;
   overflow: hidden;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 
 .video-element,
