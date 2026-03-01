@@ -1,6 +1,6 @@
 const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
 const SERIES_DRAFTS_STORAGE = 'cinenext_series_drafts';
-const LIVEPEER_API_BASE = 'https://livepeer.studio/api';
+const LIVEPEER_API_BASES = ['https://livepeer.studio/api', 'https://livepeer.com/api'];
 
 const apiKeyInput = document.querySelector('#api-key');
 const saveKeyBtn = document.querySelector('#save-key');
@@ -161,27 +161,49 @@ const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(`${LIVEPEER_API_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let lastNetworkError = null;
 
-  const text = await response.text();
-  const parsed = safeParse(text, null);
+  for (let index = 0; index < LIVEPEER_API_BASES.length; index += 1) {
+    const baseUrl = LIVEPEER_API_BASES[index];
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
 
-  if (!response.ok) {
-    const reason =
-      parsed?.error ||
-      parsed?.message ||
-      parsed?.details ||
-      (Array.isArray(parsed?.errors) && parsed.errors[0]) ||
-      text ||
-      `请求失败（HTTP ${response.status}）`;
-    throw new Error(String(reason));
+      const text = await response.text();
+      const parsed = safeParse(text, null);
+
+      if (!response.ok) {
+        const reason =
+          parsed?.error ||
+          parsed?.message ||
+          parsed?.details ||
+          (Array.isArray(parsed?.errors) && parsed.errors[0]) ||
+          text ||
+          `请求失败（HTTP ${response.status}）`;
+        throw new Error(String(reason));
+      }
+
+      return parsed;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '');
+      const isNetworkError = /failed to fetch|networkerror|load failed/i.test(message);
+
+      if (!isNetworkError) {
+        throw error;
+      }
+
+      lastNetworkError = error;
+      if (index < LIVEPEER_API_BASES.length - 1) {
+        setUploadProgress('主 API 域名连接失败，正在切换备用域名...');
+      }
+    }
   }
 
-  return parsed;
+  const networkMessage = lastNetworkError instanceof Error ? lastNetworkError.message : 'Failed to fetch';
+  throw new Error(`连接 Livepeer API 失败：${networkMessage}`);
 };
 
 const parseActors = (value) =>
@@ -264,7 +286,7 @@ const requestUpload = async ({ file, name, metadata }) => {
     body: {
       name,
       metadata,
-      corsOrigin: window.location.origin,
+      corsOrigin: '*',
     },
   });
 
