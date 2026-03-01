@@ -66,3 +66,22 @@ npm run upload -- \
 - 文件会按文件名自然排序后上传（顺序即集数）。
 - 自动写入 metadata：`seriesName`、`episodeNumber`、`totalEpisodes`、`freeEpisodes`、`price` 等。
 - 付费规则：`episodeNumber <= freeEpisodes` 时价格自动写 `0`。
+
+## 本地代理 + 浏览器上传（推荐）
+
+如果你想继续用浏览器页面上传，但线上静态站被 `Failed to fetch` 卡住，可在本机启动代理服务：
+
+```bash
+npm run local:web
+```
+
+启动后用浏览器打开：
+
+- 管理页：`http://localhost:4173/admin.html`
+- 上传页：`http://localhost:4173/upload.html`
+
+说明：
+
+- 该服务会同时托管页面与 `/api/request-upload` 代理。
+- 上传页会在直连失败时自动回退到代理。
+- 可选环境变量：`LIVEPEER_API_KEY`（服务端固定 key，不想在前端输入时可用）。
