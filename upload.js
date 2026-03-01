@@ -3,6 +3,7 @@ import * as tus from 'tus-js-client';
 const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
 const SERIES_DRAFTS_STORAGE = 'cinenext_series_drafts';
 const LIVEPEER_API_BASES = ['https://livepeer.studio/api', 'https://livepeer.com/api'];
+const LIVEPEER_UPLOAD_PATHS = ['/asset/request-upload', '/asset/upload', '/asset/create-upload', '/asset/requestUpload'];
 
 const apiKeyInput = document.querySelector('#api-key');
 const saveKeyBtn = document.querySelector('#save-key');
@@ -283,12 +284,31 @@ const findSelectedSeries = () => seriesDrafts.find((item) => item.seriesName ===
 
 const requestUpload = async ({ file, name, metadata }) => {
   setUploadProgress('正在向 Livepeer 申请上传地址...');
-  const requestUploadResult = await requestLivepeer('/asset/request-upload', {
-    method: 'POST',
-    body: {
-      name,
-    },
-  });
+  let requestUploadResult = null;
+  let lastUploadTicketError = null;
+
+  for (let index = 0; index < LIVEPEER_UPLOAD_PATHS.length; index += 1) {
+    const uploadPath = LIVEPEER_UPLOAD_PATHS[index];
+    try {
+      if (index > 0) {
+        setUploadProgress(`主上传接口不可用，尝试备用接口 ${uploadPath}...`);
+      }
+      requestUploadResult = await requestLivepeer(uploadPath, {
+        method: 'POST',
+        body: {
+          name,
+        },
+      });
+      break;
+    } catch (error) {
+      lastUploadTicketError = error;
+    }
+  }
+
+  if (!requestUploadResult) {
+    const reason = lastUploadTicketError instanceof Error ? lastUploadTicketError.message : '未知错误';
+    throw new Error(`无法申请上传地址：${reason}`);
+  }
 
   const tusEndpoint = String(requestUploadResult?.tusEndpoint || '').trim();
   if (!tusEndpoint) {
