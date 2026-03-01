@@ -8,6 +8,7 @@ import useVideoReloadSync from './hooks/useVideoReloadSync';
 import {
   HOT_KEYWORDS,
   LOCAL_VIDEO_KEY_SET,
+  LOCAL_VIDEO_VERSION_KEY,
   formatCount,
   normalizeAsset,
   readLegacyVideos,
@@ -142,7 +143,7 @@ function App() {
     setReloadTick((prev) => prev + 1);
   }, []);
 
-  useVideoReloadSync(requestReload, LOCAL_VIDEO_KEY_SET);
+  useVideoReloadSync(requestReload, LOCAL_VIDEO_KEY_SET, LOCAL_VIDEO_VERSION_KEY);
 
   const checkNftAccess = useCallback(async (video, address) => {
     if (!video?.nftCollectionAddress) {
