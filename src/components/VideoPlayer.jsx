@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import '../player.css';
 
-const LONG_PRESS_MS = 450;
+// const LONG_PRESS_MS = 450; // 已移除长按功能
 const AUTOPLAY_UNLOCK_KEY = 'cinenext_autoplay_unlocked';
 
 const VideoPlayer = ({
@@ -24,9 +24,7 @@ const VideoPlayer = ({
 }) => {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
-  const longPressTimerRef = useRef(null);
   const autoplayRetryTimerRef = useRef(null);
-  const longPressTriggeredRef = useRef(false);
   const timeRafRef = useRef(0);
   const pendingTimeRef = useRef(0);
   const lastProgressBucketRef = useRef(-1);
@@ -312,39 +310,13 @@ const VideoPlayer = ({
     }
   };
 
-  const clearLongPress = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-
-  const handlePointerDown = () => {
-    clearLongPress();
-    longPressTriggeredRef.current = false;
-    longPressTimerRef.current = setTimeout(() => {
-      longPressTriggeredRef.current = true;
-      setShowActionSheet(true);
-      setShowEpisodeSheet(false);
-    }, LONG_PRESS_MS);
-  };
-
-  const handlePointerUp = () => {
-    clearLongPress();
-  };
-
+  // 已移除长按相关逻辑
   const handleTap = () => {
-    if (longPressTriggeredRef.current) {
-      longPressTriggeredRef.current = false;
-      return;
-    }
-
     if (showActionSheet || showEpisodeSheet) {
       setShowActionSheet(false);
       setShowEpisodeSheet(false);
       return;
     }
-
     togglePause();
   };
 
@@ -407,7 +379,6 @@ const VideoPlayer = ({
 
   useEffect(() => {
     return () => {
-      clearLongPress();
       if (autoplayRetryTimerRef.current) {
         window.clearTimeout(autoplayRetryTimerRef.current);
       }
@@ -420,10 +391,6 @@ const VideoPlayer = ({
   return (
     <div
       className="video-player"
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      onPointerLeave={handlePointerUp}
       onClick={handleTap}
     >
       {preload ? (

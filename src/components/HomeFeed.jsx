@@ -5,7 +5,7 @@ const RENDER_RADIUS = 2;
 const EPISODE_SWIPE_PX = 88;
 const MIN_SWIPE_TIME_MS = 70;
 const MAX_SWIPE_TIME_MS = 650;
-const MAX_DRAG_PX = 180;
+const EPISODE_SWIPE_RATIO = 1.2;
 
 function HomeFeed({
   loading,
@@ -71,10 +71,9 @@ function HomeFeed({
   const touchStartRef = useRef({ x: 0, y: 0 });
   const touchStartTimeRef = useRef(0);
   const touchMovingRef = useRef(false);
-  const [dragState, setDragState] = useState({
-    seriesKey: '',
-    offsetY: 0,
-    dragging: false,
+  const [actionSheetSignal, setActionSheetSignal] = useState({
+    key: '',
+    tick: 0,
   });
 
   const activeVideo = videos[activeIndex] || null;
@@ -110,23 +109,7 @@ function HomeFeed({
     return false;
   };
 
-  const clampDrag = (deltaY) => {
-    if (deltaY > MAX_DRAG_PX) return MAX_DRAG_PX;
-    if (deltaY < -MAX_DRAG_PX) return -MAX_DRAG_PX;
-    return deltaY;
-  };
-
   const resetDragState = () => {
-    setDragState((prev) => {
-      if (!prev.dragging && prev.offsetY === 0) {
-        return prev;
-      }
-      return {
-        seriesKey: prev.seriesKey,
-        offsetY: 0,
-        dragging: false,
-      };
-    });
     touchMovingRef.current = false;
   };
 
@@ -143,13 +126,6 @@ function HomeFeed({
       y: point.clientY,
     };
 
-    if (activeVideo?.seriesKey) {
-      setDragState({
-        seriesKey: activeVideo.seriesKey,
-        offsetY: 0,
-        dragging: true,
-      });
-    }
   };
 
   const handleFeedTouchMove = (event) => {
@@ -162,17 +138,10 @@ function HomeFeed({
     const deltaY = point.clientY - touchStartRef.current.y;
     const isEpisodeSwipeCandidate =
       Math.abs(deltaY) >= 6 &&
-      Math.abs(deltaY) > Math.abs(deltaX) * 1.2;
+      Math.abs(deltaY) > Math.abs(deltaX) * EPISODE_SWIPE_RATIO;
 
     if (isEpisodeSwipeCandidate) {
       touchMovingRef.current = true;
-      if (activeVideo?.seriesKey) {
-        setDragState((prev) => ({
-          seriesKey: activeVideo.seriesKey,
-          offsetY: clampDrag(deltaY),
-          dragging: true,
-        }));
-      }
       event.preventDefault();
       event.stopPropagation();
     }
@@ -193,7 +162,7 @@ function HomeFeed({
     const distancePassed = Math.abs(deltaY) >= EPISODE_SWIPE_PX;
     const velocityPassed = Math.abs(velocityY) >= 0.52;
     const shouldTrySwitch = (distancePassed || velocityPassed)
-      && Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+      && Math.abs(deltaY) > Math.abs(deltaX) * EPISODE_SWIPE_RATIO
       && durationMs >= MIN_SWIPE_TIME_MS
       && durationMs <= MAX_SWIPE_TIME_MS;
 
@@ -213,9 +182,7 @@ function HomeFeed({
 
   const handleFeedScroll = (event) => {
     onFeedScroll(event);
-    if (dragState.dragging || dragState.offsetY !== 0) {
-      resetDragState();
-    }
+    resetDragState();
   };
 
   if (loading) {
@@ -279,15 +246,7 @@ function HomeFeed({
           const interaction = getInteraction(video);
 
           return (
-            <section
-              key={video.id}
-              className={`feed-item ${dragState.seriesKey === video.seriesKey && dragState.dragging ? 'feed-item-dragging' : ''}`}
-              style={
-                dragState.seriesKey === video.seriesKey
-                  ? { transform: `translate3d(0, ${dragState.offsetY}px, 0)` }
-                  : undefined
-              }
-            >
+            <section key={video.id} className="feed-item">
               <VideoPlayer
                 sourceUrl={video.playbackUrl}
                 poster={video.coverUrl}
@@ -299,6 +258,7 @@ function HomeFeed({
                 seriesButtonText={video.seriesSummary}
                 episodes={video.episodes}
                 selectedEpisodeId={video.selectedEpisodeId}
+                openActionsSignal={actionSheetSignal.key === video.id ? actionSheetSignal.tick : 0}
                 onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
                 onNotInterested={() => onNotInterested(video)}
                 onReport={() => onReportVideo(video)}
@@ -337,6 +297,13 @@ function HomeFeed({
                 )}
                 <button type="button" onClick={() => toggleWatchlist(video)}>
                   {watchlist.includes(video.id) ? '★ 已追' : '☆ 追剧'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActionSheetSignal({ key: video.id, tick: Date.now() })}
+                  aria-label="更多操作"
+                >
+                  ...
                 </button>
               </div>
             </section>
