@@ -32,8 +32,8 @@ function useTelegramSetup(page, setPage) {
     tg.ready();
     tg.expand();
     requestTelegramFullscreen(tg);
-    if (typeof tg.enableVerticalSwipes === 'function') {
-      tg.enableVerticalSwipes();
+    if (typeof tg.disableVerticalSwipes === 'function') {
+      tg.disableVerticalSwipes();
     }
 
     const theme = tg.themeParams || {};

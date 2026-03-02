@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import VideoPlayer from './VideoPlayer';
 
 const RENDER_RADIUS = 2;
+const EPISODE_SWIPE_PX = 56;
 
 function HomeFeed({
   loading,
@@ -32,6 +33,86 @@ function HomeFeed({
   onReportVideo,
   formatCount,
 }) {
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const touchLockedRef = useRef(false);
+
+  const activeVideo = videos[activeIndex] || null;
+
+  const triggerEpisodeSwipe = (deltaX, deltaY) => {
+    if (!activeVideo || !Array.isArray(activeVideo.episodes) || activeVideo.episodes.length <= 1) {
+      return false;
+    }
+
+    if (Math.abs(deltaY) < EPISODE_SWIPE_PX || Math.abs(deltaY) <= Math.abs(deltaX)) {
+      return false;
+    }
+
+    const currentIndex = activeVideo.episodes.findIndex((item) => item.id === activeVideo.selectedEpisodeId);
+    if (currentIndex < 0) {
+      return false;
+    }
+
+    if (deltaY < 0 && currentIndex < activeVideo.episodes.length - 1) {
+      onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, 1);
+      return true;
+    }
+
+    if (deltaY > 0 && currentIndex > 0) {
+      onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, -1);
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleFeedTouchStart = (event) => {
+    const point = event.changedTouches?.[0];
+    if (!point) {
+      return;
+    }
+
+    touchLockedRef.current = false;
+    touchStartRef.current = {
+      x: point.clientX,
+      y: point.clientY,
+    };
+  };
+
+  const handleFeedTouchMove = (event) => {
+    if (touchLockedRef.current) {
+      return;
+    }
+
+    const point = event.changedTouches?.[0];
+    if (!point) {
+      return;
+    }
+
+    const deltaX = point.clientX - touchStartRef.current.x;
+    const deltaY = point.clientY - touchStartRef.current.y;
+    const switched = triggerEpisodeSwipe(deltaX, deltaY);
+    if (switched) {
+      touchLockedRef.current = true;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const handleFeedTouchEnd = (event) => {
+    if (touchLockedRef.current) {
+      return;
+    }
+
+    const point = event.changedTouches?.[0];
+    if (!point) {
+      return;
+    }
+
+    const deltaX = point.clientX - touchStartRef.current.x;
+    const deltaY = point.clientY - touchStartRef.current.y;
+    triggerEpisodeSwipe(deltaX, deltaY);
+  };
+
   if (loading) {
     return <div className="state-view">加载中...</div>;
   }
@@ -58,7 +139,14 @@ function HomeFeed({
         </div>
       </header>
 
-      <div className="feed-scroll" ref={feedRef} onScroll={onFeedScroll}>
+      <div
+        className="feed-scroll"
+        ref={feedRef}
+        onScroll={onFeedScroll}
+        onTouchStart={handleFeedTouchStart}
+        onTouchMove={handleFeedTouchMove}
+        onTouchEnd={handleFeedTouchEnd}
+      >
         {videos.map((video, index) => {
           const shouldRenderHeavy = Math.abs(index - activeIndex) <= RENDER_RADIUS;
           const blocked = video.unlockType === 'nft' && !accessMap[video.id] && !adUnlocks[video.id];
