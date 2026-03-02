@@ -2,7 +2,9 @@ import React, { useRef, useState } from 'react';
 import VideoPlayer from './VideoPlayer';
 
 const RENDER_RADIUS = 2;
-const EPISODE_SWIPE_PX = 56;
+const EPISODE_SWIPE_PX = 118;
+const MIN_SWIPE_TIME_MS = 70;
+const MAX_SWIPE_TIME_MS = 650;
 
 function HomeFeed({
   loading,
@@ -37,13 +39,12 @@ function HomeFeed({
     <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#74A3FF" />
-          <stop offset="100%" stopColor="#33D0FF" />
+          <stop offset="0%" stopColor="#FF5454" />
+          <stop offset="100%" stopColor="#C6153C" />
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="26" height="26" rx="9" fill="url(#brandGrad)" />
-      <path d="M18.9 9.4a6.4 6.4 0 1 0 0 9.2" fill="none" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" />
-      <path d="M13.7 10.6l5.6 3.4-5.6 3.4z" fill="#fff" />
+      <rect x="1" y="1" width="26" height="26" rx="8" fill="url(#brandGrad)" />
+      <path d="M8.8 20.3V7.7h3.1l6.3 8.4V7.7h3v12.6h-3l-6.4-8.5v8.5z" fill="#fff" />
     </svg>
   );
 
@@ -63,18 +64,21 @@ function HomeFeed({
   );
 
   const touchStartRef = useRef({ x: 0, y: 0 });
-  const touchLockedRef = useRef(false);
-  const switchDirRef = useRef(0);
+  const touchStartTimeRef = useRef(0);
   const [switchSignal, setSwitchSignal] = useState({ key: '', dir: 0, tick: 0 });
 
   const activeVideo = videos[activeIndex] || null;
 
-  const triggerEpisodeSwipe = (deltaX, deltaY) => {
+  const triggerEpisodeSwipe = (deltaX, deltaY, durationMs) => {
     if (!activeVideo || !Array.isArray(activeVideo.episodes) || activeVideo.episodes.length <= 1) {
       return false;
     }
 
-    if (Math.abs(deltaY) < EPISODE_SWIPE_PX || Math.abs(deltaY) <= Math.abs(deltaX)) {
+    if (durationMs < MIN_SWIPE_TIME_MS || durationMs > MAX_SWIPE_TIME_MS) {
+      return false;
+    }
+
+    if (Math.abs(deltaY) < EPISODE_SWIPE_PX || Math.abs(deltaY) <= Math.abs(deltaX) * 1.25) {
       return false;
     }
 
@@ -84,14 +88,12 @@ function HomeFeed({
     }
 
     if (deltaY < 0 && currentIndex < activeVideo.episodes.length - 1) {
-      switchDirRef.current = 1;
       onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, 1);
       setSwitchSignal({ key: activeVideo.seriesKey, dir: 1, tick: Date.now() });
       return true;
     }
 
     if (deltaY > 0 && currentIndex > 0) {
-      switchDirRef.current = -1;
       onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, -1);
       setSwitchSignal({ key: activeVideo.seriesKey, dir: -1, tick: Date.now() });
       return true;
@@ -106,7 +108,7 @@ function HomeFeed({
       return;
     }
 
-    touchLockedRef.current = false;
+    touchStartTimeRef.current = Date.now();
     touchStartRef.current = {
       x: point.clientX,
       y: point.clientY,
@@ -114,10 +116,6 @@ function HomeFeed({
   };
 
   const handleFeedTouchMove = (event) => {
-    if (touchLockedRef.current) {
-      return;
-    }
-
     const point = event.changedTouches?.[0];
     if (!point) {
       return;
@@ -125,19 +123,17 @@ function HomeFeed({
 
     const deltaX = point.clientX - touchStartRef.current.x;
     const deltaY = point.clientY - touchStartRef.current.y;
-    const switched = triggerEpisodeSwipe(deltaX, deltaY);
-    if (switched) {
-      touchLockedRef.current = true;
+    const isEpisodeSwipeCandidate =
+      Math.abs(deltaY) >= EPISODE_SWIPE_PX &&
+      Math.abs(deltaY) > Math.abs(deltaX) * 1.25;
+
+    if (isEpisodeSwipeCandidate) {
       event.preventDefault();
       event.stopPropagation();
     }
   };
 
   const handleFeedTouchEnd = (event) => {
-    if (touchLockedRef.current) {
-      return;
-    }
-
     const point = event.changedTouches?.[0];
     if (!point) {
       return;
@@ -145,7 +141,8 @@ function HomeFeed({
 
     const deltaX = point.clientX - touchStartRef.current.x;
     const deltaY = point.clientY - touchStartRef.current.y;
-    triggerEpisodeSwipe(deltaX, deltaY);
+    const durationMs = Math.max(0, Date.now() - touchStartTimeRef.current);
+    triggerEpisodeSwipe(deltaX, deltaY, durationMs);
   };
 
   if (loading) {
@@ -165,7 +162,7 @@ function HomeFeed({
       <header className="home-topbar">
         <div className="brand-logo" aria-label="CineNext">
           <span className="brand-mark" aria-hidden="true"><BrandMark /></span>
-          <span className="brand-text">CineNext</span>
+          <span className="brand-text">CINENEXT</span>
         </div>
         <div className="topbar-actions">
           <button

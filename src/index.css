@@ -44,33 +44,33 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 14px;
+  padding: 6px 14px;
   background: transparent;
 }
 
 .brand-logo {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
 }
 
 .brand-mark {
-  width: 30px;
-  height: 30px;
+  width: 31px;
+  height: 31px;
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 4px 12px rgba(64, 150, 255, 0.36));
+  filter: drop-shadow(0 4px 12px rgba(198, 20, 58, 0.36));
 }
 
 .brand-mark svg {
-  width: 30px;
-  height: 30px;
+  width: 31px;
+  height: 31px;
 }
 
 .brand-text {
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: 0.25px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.9px;
   color: #fff;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
 }

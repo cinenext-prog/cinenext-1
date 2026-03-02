@@ -4,14 +4,17 @@ const getTelegramWebApp = () => window.Telegram?.WebApp || null;
 
 const applyMiniAppTopOffset = (tg) => {
   const root = document.documentElement;
+  const ua = window.navigator?.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
   const contentSafeTop = Number(tg?.contentSafeAreaInset?.top ?? tg?.safeAreaInset?.top ?? 0);
 
   if (Number.isFinite(contentSafeTop) && contentSafeTop > 0) {
-    root.style.setProperty('--miniapp-top-offset', `${Math.round(contentSafeTop + 10)}px`);
+    const extraTop = isIOS ? 58 : 46;
+    root.style.setProperty('--miniapp-top-offset', `${Math.round(contentSafeTop + extraTop)}px`);
     return;
   }
 
-  root.style.setProperty('--miniapp-top-offset', '92px');
+  root.style.setProperty('--miniapp-top-offset', isIOS ? '136px' : '112px');
 };
 
 const requestTelegramFullscreen = (tg) => {
