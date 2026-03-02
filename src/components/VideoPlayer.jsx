@@ -3,7 +3,6 @@ import Hls from 'hls.js';
 import '../player.css';
 
 const LONG_PRESS_MS = 450;
-const SWIPE_TRIGGER_PX = 56;
 const AUTOPLAY_UNLOCK_KEY = 'cinenext_autoplay_unlocked';
 
 const VideoPlayer = ({
@@ -18,10 +17,6 @@ const VideoPlayer = ({
   episodes,
   selectedEpisodeId,
   onSelectEpisode,
-  onSwipePrevEpisode,
-  onSwipeNextEpisode,
-  canSwipePrev,
-  canSwipeNext,
   onNotInterested,
   onReport,
   onUnlock,
@@ -32,11 +27,6 @@ const VideoPlayer = ({
   const longPressTimerRef = useRef(null);
   const autoplayRetryTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
-  const pointerStartRef = useRef({ x: 0, y: 0 });
-  const pointerMovedRef = useRef(false);
-  const touchStartRef = useRef({ x: 0, y: 0 });
-  const touchSwipedRef = useRef(false);
-  const swipeLockUntilRef = useRef(0);
   const timeRafRef = useRef(0);
   const pendingTimeRef = useRef(0);
   const lastProgressBucketRef = useRef(-1);
@@ -331,41 +321,9 @@ const VideoPlayer = ({
     }
   };
 
-  const triggerSwipeEpisode = (deltaX, deltaY) => {
-    const now = Date.now();
-    if (now < swipeLockUntilRef.current) {
-      return false;
-    }
-
-    if (showActionSheet || showEpisodeSheet) {
-      return false;
-    }
-
-    const isVerticalSwipe = Math.abs(deltaY) >= SWIPE_TRIGGER_PX && Math.abs(deltaY) > Math.abs(deltaX);
-    if (!isVerticalSwipe) {
-      return false;
-    }
-
-    if (deltaY < 0 && canSwipeNext) {
-      onSwipeNextEpisode?.();
-      swipeLockUntilRef.current = now + 260;
-      return true;
-    }
-
-    if (deltaY > 0 && canSwipePrev) {
-      onSwipePrevEpisode?.();
-      swipeLockUntilRef.current = now + 260;
-      return true;
-    }
-
-    return false;
-  };
-
-  const handlePointerDown = (event) => {
+  const handlePointerDown = () => {
     clearLongPress();
     longPressTriggeredRef.current = false;
-    pointerMovedRef.current = false;
-    pointerStartRef.current = { x: event.clientX, y: event.clientY };
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
       setShowActionSheet(true);
@@ -373,63 +331,8 @@ const VideoPlayer = ({
     }, LONG_PRESS_MS);
   };
 
-  const handlePointerMove = (event) => {
-    const dx = Math.abs(event.clientX - pointerStartRef.current.x);
-    const dy = Math.abs(event.clientY - pointerStartRef.current.y);
-    if (dx > 8 || dy > 8) {
-      pointerMovedRef.current = true;
-    }
-  };
-
   const handlePointerUp = () => {
     clearLongPress();
-  };
-
-  const handleTouchStart = (event) => {
-    const point = event.changedTouches?.[0];
-    if (!point) {
-      return;
-    }
-    touchSwipedRef.current = false;
-    touchStartRef.current = {
-      x: point.clientX,
-      y: point.clientY,
-    };
-  };
-
-  const handleTouchMove = (event) => {
-    const point = event.changedTouches?.[0];
-    if (!point || touchSwipedRef.current) {
-      return;
-    }
-
-    const deltaX = point.clientX - touchStartRef.current.x;
-    const deltaY = point.clientY - touchStartRef.current.y;
-    if (Math.abs(deltaY) < SWIPE_TRIGGER_PX || Math.abs(deltaY) <= Math.abs(deltaX)) {
-      return;
-    }
-
-    const switched = triggerSwipeEpisode(deltaX, deltaY);
-    if (switched) {
-      touchSwipedRef.current = true;
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
-
-  const handleTouchEnd = (event) => {
-    const point = event.changedTouches?.[0];
-    if (!point) {
-      return;
-    }
-
-    if (touchSwipedRef.current) {
-      return;
-    }
-
-    const deltaX = point.clientX - touchStartRef.current.x;
-    const deltaY = point.clientY - touchStartRef.current.y;
-    triggerSwipeEpisode(deltaX, deltaY);
   };
 
   const handleTap = () => {
@@ -441,11 +344,6 @@ const VideoPlayer = ({
     if (showActionSheet || showEpisodeSheet) {
       setShowActionSheet(false);
       setShowEpisodeSheet(false);
-      return;
-    }
-
-    if (pointerMovedRef.current) {
-      pointerMovedRef.current = false;
       return;
     }
 
@@ -525,13 +423,9 @@ const VideoPlayer = ({
     <div
       className="video-player"
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
       onClick={handleTap}
     >
       {preload ? (

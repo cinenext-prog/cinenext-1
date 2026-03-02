@@ -77,14 +77,30 @@ const buildSeriesFeed = (rawVideos, selectedEpisodeMap = {}) => {
         return String(left.createdAt || '').localeCompare(String(right.createdAt || ''));
       });
 
-      const preferredEpisodeId = selectedEpisodeMap[seriesKey];
-      const selectedEpisode = sortedEpisodes.find((item) => item.id === preferredEpisodeId)
-        || sortedEpisodes[sortedEpisodes.length - 1]
-        || sortedEpisodes[0];
+      const withNumberedEpisodes = sortedEpisodes.map((item, index) => {
+        const parsedEpisode = Number(item.episode || 0);
+        return {
+          ...item,
+          episode: parsedEpisode > 0 ? parsedEpisode : index + 1,
+        };
+      });
 
-      const totalEpisodes = sortedEpisodes.length;
-      const latestEpisode = sortedEpisodes[sortedEpisodes.length - 1]?.episode || selectedEpisode?.episode || 1;
-      const isCompleted = sortedEpisodes.some((item) => item.isCompleted === true);
+      const uniqueEpisodeCount = new Set(withNumberedEpisodes.map((item) => item.episode)).size;
+      const normalizedEpisodes = uniqueEpisodeCount === withNumberedEpisodes.length
+        ? withNumberedEpisodes
+        : withNumberedEpisodes.map((item, index) => ({
+            ...item,
+            episode: index + 1,
+          }));
+
+      const preferredEpisodeId = selectedEpisodeMap[seriesKey];
+      const selectedEpisode = normalizedEpisodes.find((item) => item.id === preferredEpisodeId)
+        || normalizedEpisodes[normalizedEpisodes.length - 1]
+        || normalizedEpisodes[0];
+
+      const totalEpisodes = normalizedEpisodes.length;
+      const latestEpisode = normalizedEpisodes[normalizedEpisodes.length - 1]?.episode || selectedEpisode?.episode || 1;
+      const isCompleted = normalizedEpisodes.some((item) => item.isCompleted === true);
 
       return {
         ...selectedEpisode,
@@ -98,7 +114,7 @@ const buildSeriesFeed = (rawVideos, selectedEpisodeMap = {}) => {
         seriesSummary: isCompleted
           ? `全集${totalEpisodes}集 · 完结`
           : `全集${totalEpisodes}集 · 更新至${latestEpisode}集`,
-        episodes: sortedEpisodes.map((item) => ({
+        episodes: normalizedEpisodes.map((item) => ({
           id: item.id,
           title: item.title,
           episode: item.episode,

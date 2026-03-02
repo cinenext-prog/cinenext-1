@@ -130,8 +130,14 @@ function HomeFeed({
       <header className="home-topbar">
         <div className="logo">CineNext</div>
         <div className="topbar-actions">
-          <button type="button" className="wallet-btn" onClick={() => tonConnectUI.openModal()}>
-            {wallet ? '钱包已连接' : '连接钱包'}
+          <button
+            type="button"
+            className={`icon-btn ${wallet ? 'icon-btn-active' : ''}`}
+            onClick={() => tonConnectUI.openModal()}
+            aria-label={wallet ? '钱包已连接' : '连接钱包'}
+            title={wallet ? '钱包已连接' : '连接钱包'}
+          >
+            👛
           </button>
           <button type="button" className="icon-btn" onClick={openSearch} aria-label="搜索">
             🔍
