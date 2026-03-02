@@ -13,6 +13,12 @@ const VideoPlayer = ({
   preload,
   blocked,
   lockLabel,
+  seriesButtonText,
+  episodes,
+  selectedEpisodeId,
+  onSelectEpisode,
+  onNotInterested,
+  onReport,
   onUnlock,
   onPlaybackEvent,
 }) => {
@@ -20,13 +26,18 @@ const VideoPlayer = ({
   const hlsRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const autoplayRetryTimerRef = useRef(null);
+  const longPressTriggeredRef = useRef(false);
   const timeRafRef = useRef(0);
   const pendingTimeRef = useRef(0);
   const lastProgressBucketRef = useRef(-1);
 
   const [isPaused, setIsPaused] = useState(false);
+  const [showActionSheet, setShowActionSheet] = useState(false);
   const [showSpeedSheet, setShowSpeedSheet] = useState(false);
+  const [showQualitySheet, setShowQualitySheet] = useState(false);
+  const [showEpisodeSheet, setShowEpisodeSheet] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [qualityMode, setQualityMode] = useState('auto');
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playError, setPlayError] = useState('');
@@ -39,6 +50,10 @@ const VideoPlayer = ({
   useEffect(() => {
     setResolvedSourceUrl(sourceUrl);
     setHasSwitchedCdn(false);
+    setShowActionSheet(false);
+    setShowSpeedSheet(false);
+    setShowQualitySheet(false);
+    setShowEpisodeSheet(false);
   }, [sourceUrl]);
 
   const switchToBackupCdn = useCallback(() => {
@@ -312,8 +327,13 @@ const VideoPlayer = ({
 
   const handlePointerDown = () => {
     clearLongPress();
+    longPressTriggeredRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
-      setShowSpeedSheet(true);
+      longPressTriggeredRef.current = true;
+      setShowActionSheet(true);
+      setShowSpeedSheet(false);
+      setShowQualitySheet(false);
+      setShowEpisodeSheet(false);
     }, LONG_PRESS_MS);
   };
 
@@ -322,8 +342,16 @@ const VideoPlayer = ({
   };
 
   const handleTap = () => {
-    if (showSpeedSheet) {
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+
+    if (showActionSheet || showSpeedSheet || showQualitySheet || showEpisodeSheet) {
+      setShowActionSheet(false);
       setShowSpeedSheet(false);
+      setShowQualitySheet(false);
+      setShowEpisodeSheet(false);
       return;
     }
 
@@ -348,6 +376,22 @@ const VideoPlayer = ({
     }
     setPlaybackRate(rate);
     setShowSpeedSheet(false);
+  };
+
+  const applyQualityMode = (mode) => {
+    const hls = hlsRef.current;
+    if (hls && Array.isArray(hls.levels) && hls.levels.length > 0) {
+      if (mode === 'auto') {
+        hls.currentLevel = -1;
+      } else if (mode === 'high') {
+        hls.currentLevel = hls.levels.length - 1;
+      } else if (mode === 'low') {
+        hls.currentLevel = 0;
+      }
+    }
+
+    setQualityMode(mode);
+    setShowQualitySheet(false);
   };
 
   useEffect(() => {
@@ -426,6 +470,101 @@ const VideoPlayer = ({
               onClick={() => applyPlaybackRate(rate)}
             >
               {rate}x
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showQualitySheet && (
+        <div className="quality-sheet" onClick={(event) => event.stopPropagation()}>
+          {[
+            { value: 'auto', label: '自动' },
+            { value: 'high', label: '高清' },
+            { value: 'low', label: '流畅' },
+          ].map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className={qualityMode === item.value ? 'active' : ''}
+              onClick={() => applyQualityMode(item.value)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showActionSheet && (
+        <div className="press-actions" onClick={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowActionSheet(false);
+              setShowSpeedSheet(true);
+            }}
+          >
+            倍速
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowActionSheet(false);
+              setShowQualitySheet(true);
+            }}
+          >
+            清晰度
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowActionSheet(false);
+              onNotInterested?.();
+            }}
+          >
+            不感兴趣
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowActionSheet(false);
+              onReport?.();
+            }}
+          >
+            举报
+          </button>
+        </div>
+      )}
+
+      {Array.isArray(episodes) && episodes.length > 0 && (
+        <div className="series-entry-wrap" onClick={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            className="series-entry-btn"
+            onClick={() => {
+              setShowEpisodeSheet((prev) => !prev);
+              setShowActionSheet(false);
+              setShowSpeedSheet(false);
+              setShowQualitySheet(false);
+            }}
+          >
+            {seriesButtonText || `全集${episodes.length}集`}
+          </button>
+        </div>
+      )}
+
+      {showEpisodeSheet && Array.isArray(episodes) && episodes.length > 0 && (
+        <div className="episode-sheet" onClick={(event) => event.stopPropagation()}>
+          {episodes.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={selectedEpisodeId === item.id ? 'active' : ''}
+              onClick={() => {
+                setShowEpisodeSheet(false);
+                onSelectEpisode?.(item.id);
+              }}
+            >
+              第{item.episode}集
             </button>
           ))}
         </div>

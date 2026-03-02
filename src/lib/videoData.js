@@ -51,6 +51,20 @@ export const LOCAL_VIDEO_VERSION_KEY = 'cinenext_videos_version';
 
 const toText = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
 
+const toBool = (value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value > 0;
+  }
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return ['1', 'true', 'yes', 'done', 'finished', 'completed', 'complete', 'end', '完结', '已完结'].includes(text);
+};
+
 const getPlaybackPrefix = () => {
   const configured = String(import.meta.env.VITE_LIVEPEER_RAW_HLS_PREFIX || '').trim();
   if (configured) {
@@ -137,6 +151,9 @@ export const normalizeAsset = (asset, index) => {
       ? metadata.keywords.split(',').map((keyword) => keyword.trim()).filter(Boolean)
       : [];
 
+  const totalEpisodes = Number(metadata.totalEpisodes || metadata.episodesTotal || 0) || 0;
+  const isCompleted = toBool(metadata.isCompleted || metadata.completed || metadata.status);
+
   return {
     id: String(asset?.id || playbackId),
     playbackId,
@@ -153,6 +170,8 @@ export const normalizeAsset = (asset, index) => {
     unlockType,
     nftCollectionAddress,
     price,
+    totalEpisodes,
+    isCompleted,
   };
 };
 
@@ -168,6 +187,8 @@ export const normalizeLegacyVideo = (video, index) => {
   const unlockType = video?.unlockType === 'nft' ? 'nft' : 'free';
   const actors = Array.isArray(video?.actors) ? video.actors : [];
   const keywords = Array.isArray(video?.keywords) ? video.keywords : [];
+  const totalEpisodes = Number(video?.totalEpisodes || 0) || 0;
+  const isCompleted = toBool(video?.isCompleted || video?.completed || video?.status);
 
   return {
     id: String(video?.id || `legacy-${playbackId}`),
@@ -183,6 +204,8 @@ export const normalizeLegacyVideo = (video, index) => {
     unlockType,
     nftCollectionAddress: toText(video?.nftCollectionAddress),
     price: toText(video?.price, '0.5'),
+    totalEpisodes,
+    isCompleted,
   };
 };
 

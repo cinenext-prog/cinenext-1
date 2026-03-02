@@ -26,6 +26,9 @@ function HomeFeed({
   reportPlaybackEvent,
   watchlist,
   toggleWatchlist,
+  onSelectEpisode,
+  onNotInterested,
+  onReportVideo,
   formatCount,
 }) {
   if (loading) {
@@ -77,11 +80,17 @@ function HomeFeed({
               <VideoPlayer
                 sourceUrl={video.playbackUrl}
                 poster={video.coverUrl}
-                title={video.title}
+                title={video.seriesTitle || video.title}
                 active={index === activeIndex}
                 preload={true}
                 blocked={blocked}
                 lockLabel={unlockingId === video.id ? '解锁处理中...' : lockLabel}
+                seriesButtonText={video.seriesSummary}
+                episodes={video.episodes}
+                selectedEpisodeId={video.selectedEpisodeId}
+                onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
+                onNotInterested={() => onNotInterested(video)}
+                onReport={() => onReportVideo(video)}
                 onUnlock={() => requestUnlock(video)}
                 onPlaybackEvent={(eventType, positionSeconds, payload) =>
                   reportPlaybackEvent(video, eventType, positionSeconds, payload)
@@ -89,7 +98,7 @@ function HomeFeed({
               />
 
               <div className="video-meta">
-                <h2>{video.title}</h2>
+                <h2>{video.seriesTitle || video.title}</h2>
                 <p>第 {video.episode} 集</p>
                 <div className="meta-tags">
                   <span>热度 {formatCount(video.views)}</span>

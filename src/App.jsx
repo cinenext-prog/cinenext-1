@@ -52,6 +52,62 @@ const postApi = async (url, payload = {}) => {
   return result;
 };
 
+const getSeriesKey = (video) => {
+  const key = String(video?.seriesName || video?.title || video?.id || '').trim();
+  return key || '未命名短剧';
+};
+
+const buildSeriesFeed = (rawVideos, selectedEpisodeMap = {}) => {
+  const groups = new Map();
+
+  rawVideos.forEach((video) => {
+    const seriesKey = getSeriesKey(video);
+    if (!groups.has(seriesKey)) {
+      groups.set(seriesKey, []);
+    }
+    groups.get(seriesKey).push({ ...video, seriesKey });
+  });
+
+  return [...groups.entries()]
+    .map(([seriesKey, episodes]) => {
+      const sortedEpisodes = [...episodes].sort((left, right) => {
+        if (left.episode !== right.episode) {
+          return left.episode - right.episode;
+        }
+        return String(left.createdAt || '').localeCompare(String(right.createdAt || ''));
+      });
+
+      const preferredEpisodeId = selectedEpisodeMap[seriesKey];
+      const selectedEpisode = sortedEpisodes.find((item) => item.id === preferredEpisodeId)
+        || sortedEpisodes[sortedEpisodes.length - 1]
+        || sortedEpisodes[0];
+
+      const totalEpisodes = sortedEpisodes.length;
+      const latestEpisode = sortedEpisodes[sortedEpisodes.length - 1]?.episode || selectedEpisode?.episode || 1;
+      const isCompleted = sortedEpisodes.some((item) => item.isCompleted === true);
+
+      return {
+        ...selectedEpisode,
+        id: `series:${seriesKey}`,
+        seriesKey,
+        seriesTitle: seriesKey,
+        selectedEpisodeId: selectedEpisode?.id || '',
+        totalEpisodes,
+        latestEpisode,
+        isCompleted,
+        seriesSummary: isCompleted
+          ? `全集${totalEpisodes}集 · 完结`
+          : `全集${totalEpisodes}集 · 更新至${latestEpisode}集`,
+        episodes: sortedEpisodes.map((item) => ({
+          id: item.id,
+          title: item.title,
+          episode: item.episode,
+        })),
+      };
+    })
+    .sort((left, right) => left.seriesTitle.localeCompare(right.seriesTitle, 'zh-CN'));
+};
+
 function App() {
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
@@ -71,14 +127,17 @@ function App() {
 
   const [unlockingId, setUnlockingId] = useState('');
   const [rewardingId, setRewardingId] = useState('');
+  const [selectedEpisodeMap, setSelectedEpisodeMap] = useState({});
   const [reloadTick, setReloadTick] = useState(0);
 
   const feedRef = useRef(null);
   const pendingScrollIndexRef = useRef(null);
   const scrollRafRef = useRef(0);
 
-  const activeVideo = videos[activeIndex] || null;
+  const homeVideos = useMemo(() => buildSeriesFeed(videos, selectedEpisodeMap), [videos, selectedEpisodeMap]);
+  const activeVideo = homeVideos[activeIndex] || null;
   const currentVideoIdRef = useRef(null);
+  const currentSeriesKeyRef = useRef('');
 
   useTelegramSetup(page, setPage);
 
@@ -90,6 +149,7 @@ function App() {
 
   useEffect(() => {
     currentVideoIdRef.current = activeVideo?.id || null;
+    currentSeriesKeyRef.current = activeVideo?.seriesKey || '';
   }, [activeVideo?.id]);
 
   useEffect(() => {
@@ -279,9 +339,10 @@ function App() {
           : BUILTIN_DEMO_VIDEOS.map((video, index) => normalizeAsset(video, index) || video).filter(Boolean);
 
         if (!cancelled) {
-          const currentId = currentVideoIdRef.current;
-          const nextIndex = currentId
-            ? Math.max(0, nextVideos.findIndex((video) => video.id === currentId))
+          const currentSeriesKey = currentSeriesKeyRef.current;
+          const nextSeriesVideos = buildSeriesFeed(nextVideos, {});
+          const nextIndex = currentSeriesKey
+            ? Math.max(0, nextSeriesVideos.findIndex((video) => video.seriesKey === currentSeriesKey))
             : 0;
 
           setVideos(nextVideos);
@@ -307,6 +368,15 @@ function App() {
       cancelled = true;
     };
   }, [reloadTick, fetchBackendFeed, fetchLivepeerAssets]);
+
+  useEffect(() => {
+    if (homeVideos.length === 0) {
+      setActiveIndex(0);
+      return;
+    }
+
+    setActiveIndex((prev) => Math.min(Math.max(prev, 0), homeVideos.length - 1));
+  }, [homeVideos.length]);
 
   const requestReload = useCallback(() => {
     setReloadTick((prev) => prev + 1);
@@ -388,7 +458,7 @@ function App() {
       return [];
     }
 
-    return videos.filter((video) => {
+    return homeVideos.filter((video) => {
       const actor = video.actors.join(' ').toLowerCase();
       const tags = video.keywords.join(' ').toLowerCase();
       return (
@@ -397,7 +467,7 @@ function App() {
         tags.includes(keyword)
       );
     });
-  }, [videos, searchQuery]);
+  }, [homeVideos, searchQuery]);
 
   const searchSuggestions = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
@@ -405,11 +475,11 @@ function App() {
       return [];
     }
 
-    return videos
+    return homeVideos
       .filter((video) => video.title.toLowerCase().includes(keyword))
       .slice(0, 6)
       .map((video) => video.title);
-  }, [videos, searchQuery]);
+  }, [homeVideos, searchQuery]);
 
   const updateInteraction = useCallback((videoId, updater) => {
     setInteractions((prev) => {
@@ -624,7 +694,7 @@ function App() {
   }, [setWatchlist]);
 
   const onFeedScroll = useCallback(() => {
-    if (!feedRef.current || videos.length === 0) {
+    if (!feedRef.current || homeVideos.length === 0) {
       return;
     }
 
@@ -645,13 +715,13 @@ function App() {
       }
 
       const nextIndex = Math.round(scrollTop / clientHeight);
-      const safeIndex = Math.min(videos.length - 1, Math.max(0, nextIndex));
+      const safeIndex = Math.min(homeVideos.length - 1, Math.max(0, nextIndex));
       setActiveIndex((prev) => (prev === safeIndex ? prev : safeIndex));
     });
-  }, [videos.length]);
+  }, [homeVideos.length]);
 
   const navigateToHomeVideo = useCallback((videoId, keyword = '') => {
-    const idx = videos.findIndex((video) => video.id === videoId);
+    const idx = homeVideos.findIndex((video) => video.id === videoId);
     if (idx < 0) {
       return;
     }
@@ -663,7 +733,47 @@ function App() {
     setPage('home');
     setActiveIndex(idx);
     pendingScrollIndexRef.current = idx;
-  }, [videos, setSearchHistory]);
+  }, [homeVideos, setSearchHistory]);
+
+  const selectSeriesEpisode = useCallback((seriesKey, episodeId) => {
+    if (!seriesKey || !episodeId) {
+      return;
+    }
+
+    setSelectedEpisodeMap((prev) => ({
+      ...prev,
+      [seriesKey]: episodeId,
+    }));
+  }, []);
+
+  const markNotInterested = useCallback((video) => {
+    const seriesKey = video?.seriesKey || getSeriesKey(video);
+    if (!seriesKey) {
+      return;
+    }
+
+    setVideos((prev) => prev.filter((item) => getSeriesKey(item) !== seriesKey));
+    setSelectedEpisodeMap((prev) => {
+      if (!(seriesKey in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[seriesKey];
+      return next;
+    });
+
+    reportPlaybackEvent(video, 'not_interested', 0, { seriesKey });
+  }, [reportPlaybackEvent]);
+
+  const reportVideo = useCallback((video) => {
+    const reason = window.prompt(`举报《${video?.seriesTitle || video?.title || '该短剧'}》原因（选填）`);
+    reportPlaybackEvent(video, 'report', 0, {
+      seriesKey: video?.seriesKey || getSeriesKey(video),
+      reason: String(reason || '').trim(),
+    });
+    window.alert('举报已提交，我们会尽快处理。');
+  }, [reportPlaybackEvent]);
 
   useEffect(() => {
     if (page !== 'home' || pendingScrollIndexRef.current === null || !feedRef.current) {
@@ -753,7 +863,7 @@ function App() {
       {page === 'home' ? (
         <HomeFeed
           loading={loading}
-          videos={videos}
+          videos={homeVideos}
           loadError={loadError}
           tonConnectUI={tonConnectUI}
           wallet={wallet}
@@ -774,6 +884,9 @@ function App() {
           reportPlaybackEvent={reportPlaybackEvent}
           watchlist={watchlist}
           toggleWatchlist={toggleWatchlist}
+          onSelectEpisode={selectSeriesEpisode}
+          onNotInterested={markNotInterested}
+          onReportVideo={reportVideo}
           formatCount={formatCount}
         />
       ) : (
