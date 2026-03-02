@@ -12,6 +12,7 @@ const saveAdminTokenBtn = document.querySelector('#save-admin-token');
 const clearAdminTokenBtn = document.querySelector('#clear-admin-token');
 const syncBackendBtn = document.querySelector('#sync-backend');
 const loadBackendBtn = document.querySelector('#load-backend');
+const adminTokenError = document.querySelector('#admin-token-error');
 const apiStatus = document.querySelector('#api-status');
 
 const goUploadBtn = document.querySelector('#go-upload');
@@ -49,6 +50,12 @@ const readAdminToken = () => adminTokenInput.value.trim();
 const setApiStatus = (text, isError = false) => {
   apiStatus.textContent = text;
   apiStatus.style.color = isError ? '#ff9d9d' : '#97a2bb';
+};
+
+const setAdminTokenError = (text = '') => {
+  if (!adminTokenError) return;
+  adminTokenError.textContent = text;
+  adminTokenError.style.color = text ? '#ff9d9d' : '#97a2bb';
 };
 
 const toIsoTime = (value) => {
@@ -185,19 +192,27 @@ const requestBackend = async (action, { method = 'GET', body } = {}) => {
       const suffix = reason
         ? `（${reason}；期望长度 ${expectedLength}，实际长度 ${providedLength}）`
         : '';
-      throw new Error(`后台 Token 无效${suffix}`);
+      const message = `后台 Token 无效${suffix}`;
+      setAdminTokenError(message);
+      throw new Error(message);
     }
 
     if (response.status === 401) {
-      throw new Error('未授权：请先填写后台 Token');
+      const message = '未授权：请先填写后台 Token';
+      setAdminTokenError(message);
+      throw new Error(message);
     }
 
     if (response.status >= 500) {
-      throw new Error('后台服务异常：请检查 DATABASE_URL 和函数部署状态');
+      const message = '后台服务异常：请检查 DATABASE_URL 和函数部署状态';
+      setAdminTokenError(message);
+      throw new Error(message);
     }
 
     throw new Error(parsed?.error || parsed?.message || text || `请求失败（HTTP ${response.status}）`);
   }
+
+  setAdminTokenError('');
 
   return parsed;
 };
@@ -672,16 +687,19 @@ clearKeyBtn.addEventListener('click', () => {
 saveAdminTokenBtn.addEventListener('click', () => {
   const token = readAdminToken();
   if (!token) {
+    setAdminTokenError('请先输入后台 Token');
     showToast('请先输入后台 Token', true);
     return;
   }
   localStorage.setItem(ADMIN_TOKEN_STORAGE, token);
+  setAdminTokenError('');
   showToast('后台 Token 已保存到浏览器本地');
 });
 
 clearAdminTokenBtn.addEventListener('click', () => {
   localStorage.removeItem(ADMIN_TOKEN_STORAGE);
   adminTokenInput.value = '';
+  setAdminTokenError('');
   showToast('已清除后台 Token');
 });
 
@@ -711,6 +729,7 @@ syncBackendBtn.addEventListener('click', async () => {
     await loadAssetsFromBackend();
     showToast(`后台同步成功，已回读校验：${assets.length} 条`);
   } catch (error) {
+    setAdminTokenError(error instanceof Error ? error.message : '后台同步失败');
     showToast(error instanceof Error ? error.message : '后台同步失败', true);
   }
 });
@@ -719,6 +738,7 @@ loadBackendBtn.addEventListener('click', async () => {
   try {
     await loadAssetsFromBackend();
   } catch (error) {
+    setAdminTokenError(error instanceof Error ? error.message : '后台加载失败');
     showToast(error instanceof Error ? error.message : '后台加载失败', true);
   }
 });
@@ -738,6 +758,32 @@ connectBtn.addEventListener('click', async () => {
     await refreshAssets();
   } catch (error) {
     const message = error instanceof Error ? error.message : '连接失败';
+    const shouldFallbackToServerImport =
+      /disallows CORS|cors|Failed to fetch|networkerror|超时|被拦截/i.test(message) &&
+      Boolean(readAdminToken()) &&
+      Boolean(readApiKey());
+
+    if (shouldFallbackToServerImport) {
+      try {
+        setApiStatus('浏览器直连失败，正在切换服务端导入...');
+        const result = await requestBackend('import-livepeer', {
+          method: 'POST',
+          body: {
+            livepeerApiKey: readApiKey(),
+          },
+        });
+
+        await loadAssetsFromBackend();
+        showToast(`已切换服务端导入：入库 ${result?.imported || 0} / 拉取 ${result?.totalPulled || 0}`);
+        return;
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : '服务端导入失败';
+        setApiStatus(`连接失败，且服务端导入失败：${fallbackMessage}`, true);
+        showToast(fallbackMessage, true);
+        return;
+      }
+    }
+
     if (message.includes('disallows CORS') || message.toLowerCase().includes('cors')) {
       setApiStatus('连接失败：该 API Key 未放行当前域名（CORS）。请到 Livepeer Key 设置里添加此域名。', true);
     } else if (message.includes('Failed to fetch')) {
