@@ -18,8 +18,6 @@ const VideoPlayer = ({
   selectedEpisodeId,
   switchDirection,
   switchTick,
-  dragOffsetY,
-  isDraggingEpisode,
   onSelectEpisode,
   onNotInterested,
   onReport,
@@ -444,8 +442,7 @@ const VideoPlayer = ({
 
   return (
     <div
-      className={`video-player ${switchMotionClass} ${isDraggingEpisode ? 'is-dragging-episode' : ''}`}
-      style={{ transform: `translate3d(0, ${dragOffsetY || 0}px, 0)` }}
+      className={`video-player ${switchMotionClass}`}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}

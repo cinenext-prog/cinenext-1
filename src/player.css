@@ -6,12 +6,6 @@
   background: #000;
   overflow: hidden;
   touch-action: pan-y;
-  transition: transform 220ms cubic-bezier(0.2, 0.78, 0.2, 1);
-  will-change: transform;
-}
-
-.video-player.is-dragging-episode {
-  transition: none;
 }
 
 .video-element,
@@ -21,23 +15,23 @@
   object-fit: cover;
   display: block;
   background: #000;
-  transition: transform 240ms cubic-bezier(0.2, 0.78, 0.2, 1), opacity 220ms ease;
+  transition: transform 320ms cubic-bezier(0.2, 0.78, 0.2, 1), opacity 280ms ease;
 }
 
 .video-player.episode-switch-next .video-element,
 .video-player.episode-switch-next .video-poster {
-  animation: episodeNext 240ms cubic-bezier(0.2, 0.78, 0.2, 1);
+  animation: episodeNext 320ms cubic-bezier(0.2, 0.78, 0.2, 1);
 }
 
 .video-player.episode-switch-prev .video-element,
 .video-player.episode-switch-prev .video-poster {
-  animation: episodePrev 240ms cubic-bezier(0.2, 0.78, 0.2, 1);
+  animation: episodePrev 320ms cubic-bezier(0.2, 0.78, 0.2, 1);
 }
 
 @keyframes episodeNext {
   0% {
-    transform: translateY(8%);
-    opacity: 0.72;
+    transform: translateY(100%);
+    opacity: 0.86;
   }
   100% {
     transform: translateY(0);
@@ -47,8 +41,8 @@
 
 @keyframes episodePrev {
   0% {
-    transform: translateY(-8%);
-    opacity: 0.72;
+    transform: translateY(-100%);
+    opacity: 0.86;
   }
   100% {
     transform: translateY(0);

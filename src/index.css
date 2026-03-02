@@ -39,7 +39,7 @@ input {
   position: fixed;
   left: 0;
   right: 0;
-  top: calc(var(--miniapp-top-offset, calc(env(safe-area-inset-top, 0px) + 92px)) - 3px);
+  top: calc(var(--miniapp-top-offset, calc(env(safe-area-inset-top, 0px) + 92px)) - 6px);
   z-index: 20;
   display: flex;
   align-items: center;
@@ -116,6 +116,12 @@ input {
   scroll-snap-stop: always;
   overflow: hidden;
   background: #000;
+  transition: transform 280ms cubic-bezier(0.2, 0.78, 0.2, 1);
+  will-change: transform;
+}
+
+.feed-item.feed-item-dragging {
+  transition: none;
 }
 
 .video-meta {

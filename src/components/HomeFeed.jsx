@@ -174,6 +174,8 @@ function HomeFeed({
     const deltaY = point.clientY - touchStartRef.current.y;
     const durationMs = Math.max(0, Date.now() - touchStartTimeRef.current);
 
+    const switched = triggerEpisodeSwipe(deltaX, deltaY, durationMs);
+
     if (activeVideo?.seriesKey) {
       setDragState((prev) => ({
         seriesKey: activeVideo.seriesKey,
@@ -182,7 +184,10 @@ function HomeFeed({
       }));
     }
 
-    triggerEpisodeSwipe(deltaX, deltaY, durationMs);
+    if (switched) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   };
 
   if (loading) {
@@ -245,7 +250,15 @@ function HomeFeed({
           const interaction = getInteraction(video);
 
           return (
-            <section key={video.id} className="feed-item">
+            <section
+              key={video.id}
+              className={`feed-item ${dragState.seriesKey === video.seriesKey && dragState.dragging ? 'feed-item-dragging' : ''}`}
+              style={
+                dragState.seriesKey === video.seriesKey
+                  ? { transform: `translate3d(0, ${dragState.offsetY}px, 0)` }
+                  : undefined
+              }
+            >
               <VideoPlayer
                 sourceUrl={video.playbackUrl}
                 poster={video.coverUrl}
@@ -259,8 +272,6 @@ function HomeFeed({
                 selectedEpisodeId={video.selectedEpisodeId}
                 switchDirection={switchSignal.key === video.seriesKey ? switchSignal.dir : 0}
                 switchTick={switchSignal.key === video.seriesKey ? switchSignal.tick : 0}
-                dragOffsetY={dragState.seriesKey === video.seriesKey ? dragState.offsetY : 0}
-                isDraggingEpisode={dragState.seriesKey === video.seriesKey && dragState.dragging}
                 onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
                 onNotInterested={() => onNotInterested(video)}
                 onReport={() => onReportVideo(video)}
