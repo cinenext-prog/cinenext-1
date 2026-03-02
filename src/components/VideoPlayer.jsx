@@ -35,6 +35,8 @@ const VideoPlayer = ({
   const pointerStartRef = useRef({ x: 0, y: 0 });
   const pointerMovedRef = useRef(false);
   const touchStartRef = useRef({ x: 0, y: 0 });
+  const touchSwipedRef = useRef(false);
+  const swipeLockUntilRef = useRef(0);
   const timeRafRef = useRef(0);
   const pendingTimeRef = useRef(0);
   const lastProgressBucketRef = useRef(-1);
@@ -330,23 +332,33 @@ const VideoPlayer = ({
   };
 
   const triggerSwipeEpisode = (deltaX, deltaY) => {
+    const now = Date.now();
+    if (now < swipeLockUntilRef.current) {
+      return false;
+    }
+
     if (showActionSheet || showEpisodeSheet) {
-      return;
+      return false;
     }
 
     const isVerticalSwipe = Math.abs(deltaY) >= SWIPE_TRIGGER_PX && Math.abs(deltaY) > Math.abs(deltaX);
     if (!isVerticalSwipe) {
-      return;
+      return false;
     }
 
     if (deltaY < 0 && canSwipeNext) {
       onSwipeNextEpisode?.();
-      return;
+      swipeLockUntilRef.current = now + 260;
+      return true;
     }
 
     if (deltaY > 0 && canSwipePrev) {
       onSwipePrevEpisode?.();
+      swipeLockUntilRef.current = now + 260;
+      return true;
     }
+
+    return false;
   };
 
   const handlePointerDown = (event) => {
@@ -378,15 +390,40 @@ const VideoPlayer = ({
     if (!point) {
       return;
     }
+    touchSwipedRef.current = false;
     touchStartRef.current = {
       x: point.clientX,
       y: point.clientY,
     };
   };
 
+  const handleTouchMove = (event) => {
+    const point = event.changedTouches?.[0];
+    if (!point || touchSwipedRef.current) {
+      return;
+    }
+
+    const deltaX = point.clientX - touchStartRef.current.x;
+    const deltaY = point.clientY - touchStartRef.current.y;
+    if (Math.abs(deltaY) < SWIPE_TRIGGER_PX || Math.abs(deltaY) <= Math.abs(deltaX)) {
+      return;
+    }
+
+    const switched = triggerSwipeEpisode(deltaX, deltaY);
+    if (switched) {
+      touchSwipedRef.current = true;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
   const handleTouchEnd = (event) => {
     const point = event.changedTouches?.[0];
     if (!point) {
+      return;
+    }
+
+    if (touchSwipedRef.current) {
       return;
     }
 
@@ -432,6 +469,7 @@ const VideoPlayer = ({
       video.playbackRate = rate;
     }
     setPlaybackRate(rate);
+    setShowActionSheet(false);
   };
 
   const applyQualityMode = (mode) => {
@@ -468,6 +506,7 @@ const VideoPlayer = ({
     }
 
     setQualityMode(mode);
+    setShowActionSheet(false);
   };
 
   useEffect(() => {
@@ -491,6 +530,7 @@ const VideoPlayer = ({
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onClick={handleTap}
     >
