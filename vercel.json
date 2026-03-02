@@ -1,4 +1,30 @@
 {
+  "rewrites": [
+    {
+      "source": "/api/orders/:action",
+      "destination": "/api/orders?action=:action"
+    },
+    {
+      "source": "/api/dramas/:action",
+      "destination": "/api/dramas?action=:action"
+    },
+    {
+      "source": "/api/cron/:action",
+      "destination": "/api/cron?action=:action"
+    },
+    {
+      "source": "/api/interactions/toggle-like",
+      "destination": "/api/social?action=toggle-like"
+    },
+    {
+      "source": "/api/comments/create",
+      "destination": "/api/social?action=create-comment"
+    },
+    {
+      "source": "/api/share/track",
+      "destination": "/api/social?action=track-share"
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/onchain-batch",
