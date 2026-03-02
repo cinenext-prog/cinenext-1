@@ -3,6 +3,7 @@ import Hls from 'hls.js';
 import '../player.css';
 
 const LONG_PRESS_MS = 450;
+const SWIPE_TRIGGER_PX = 56;
 const AUTOPLAY_UNLOCK_KEY = 'cinenext_autoplay_unlocked';
 
 const VideoPlayer = ({
@@ -17,6 +18,10 @@ const VideoPlayer = ({
   episodes,
   selectedEpisodeId,
   onSelectEpisode,
+  onSwipePrevEpisode,
+  onSwipeNextEpisode,
+  canSwipePrev,
+  canSwipeNext,
   onNotInterested,
   onReport,
   onUnlock,
@@ -27,17 +32,17 @@ const VideoPlayer = ({
   const longPressTimerRef = useRef(null);
   const autoplayRetryTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
+  const pointerStartRef = useRef({ x: 0, y: 0 });
+  const pointerMovedRef = useRef(false);
   const timeRafRef = useRef(0);
   const pendingTimeRef = useRef(0);
   const lastProgressBucketRef = useRef(-1);
 
   const [isPaused, setIsPaused] = useState(false);
   const [showActionSheet, setShowActionSheet] = useState(false);
-  const [showSpeedSheet, setShowSpeedSheet] = useState(false);
-  const [showQualitySheet, setShowQualitySheet] = useState(false);
   const [showEpisodeSheet, setShowEpisodeSheet] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [qualityMode, setQualityMode] = useState('auto');
+  const [qualityMode, setQualityMode] = useState('720p');
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playError, setPlayError] = useState('');
@@ -51,8 +56,6 @@ const VideoPlayer = ({
     setResolvedSourceUrl(sourceUrl);
     setHasSwitchedCdn(false);
     setShowActionSheet(false);
-    setShowSpeedSheet(false);
-    setShowQualitySheet(false);
     setShowEpisodeSheet(false);
   }, [sourceUrl]);
 
@@ -328,17 +331,45 @@ const VideoPlayer = ({
   const handlePointerDown = () => {
     clearLongPress();
     longPressTriggeredRef.current = false;
+    pointerMovedRef.current = false;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
       setShowActionSheet(true);
-      setShowSpeedSheet(false);
-      setShowQualitySheet(false);
       setShowEpisodeSheet(false);
     }, LONG_PRESS_MS);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerMove = (event) => {
+    const dx = Math.abs(event.clientX - pointerStartRef.current.x);
+    const dy = Math.abs(event.clientY - pointerStartRef.current.y);
+    if (dx > 8 || dy > 8) {
+      pointerMovedRef.current = true;
+    }
+  };
+
+  const handlePointerUp = (event) => {
+    const deltaY = event.clientY - pointerStartRef.current.y;
+    const deltaX = event.clientX - pointerStartRef.current.x;
     clearLongPress();
+
+    if (showActionSheet || showEpisodeSheet) {
+      return;
+    }
+
+    const isVerticalSwipe = Math.abs(deltaY) >= SWIPE_TRIGGER_PX && Math.abs(deltaY) > Math.abs(deltaX);
+    if (!isVerticalSwipe) {
+      return;
+    }
+
+    if (deltaY < 0 && canSwipeNext) {
+      onSwipeNextEpisode?.();
+      return;
+    }
+
+    if (deltaY > 0 && canSwipePrev) {
+      onSwipePrevEpisode?.();
+    }
   };
 
   const handleTap = () => {
@@ -347,11 +378,14 @@ const VideoPlayer = ({
       return;
     }
 
-    if (showActionSheet || showSpeedSheet || showQualitySheet || showEpisodeSheet) {
+    if (showActionSheet || showEpisodeSheet) {
       setShowActionSheet(false);
-      setShowSpeedSheet(false);
-      setShowQualitySheet(false);
       setShowEpisodeSheet(false);
+      return;
+    }
+
+    if (pointerMovedRef.current) {
+      pointerMovedRef.current = false;
       return;
     }
 
@@ -381,17 +415,37 @@ const VideoPlayer = ({
   const applyQualityMode = (mode) => {
     const hls = hlsRef.current;
     if (hls && Array.isArray(hls.levels) && hls.levels.length > 0) {
-      if (mode === 'auto') {
-        hls.currentLevel = -1;
-      } else if (mode === 'high') {
-        hls.currentLevel = hls.levels.length - 1;
-      } else if (mode === 'low') {
-        hls.currentLevel = 0;
+      if (mode === '720p') {
+        const candidates = hls.levels
+          .map((item, idx) => ({ idx, height: Number(item?.height || 0) }))
+          .filter((item) => item.height > 0)
+          .sort((a, b) => a.height - b.height);
+        if (candidates.length > 0) {
+          const best = candidates.find((item) => item.height >= 720) || candidates[candidates.length - 1];
+          hls.currentLevel = best.idx;
+        }
+      } else if (mode === '540p') {
+        const candidates = hls.levels
+          .map((item, idx) => ({ idx, height: Number(item?.height || 0) }))
+          .filter((item) => item.height > 0)
+          .sort((a, b) => a.height - b.height);
+        if (candidates.length > 0) {
+          const best = candidates.find((item) => item.height >= 540) || candidates[candidates.length - 1];
+          hls.currentLevel = best.idx;
+        }
+      } else if (mode === '360p') {
+        const candidates = hls.levels
+          .map((item, idx) => ({ idx, height: Number(item?.height || 0) }))
+          .filter((item) => item.height > 0)
+          .sort((a, b) => a.height - b.height);
+        if (candidates.length > 0) {
+          const best = candidates.find((item) => item.height >= 360) || candidates[0];
+          hls.currentLevel = best.idx;
+        }
       }
     }
 
     setQualityMode(mode);
-    setShowQualitySheet(false);
   };
 
   useEffect(() => {
@@ -410,6 +464,7 @@ const VideoPlayer = ({
     <div
       className="video-player"
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
@@ -460,78 +515,62 @@ const VideoPlayer = ({
         </div>
       )}
 
-      {showSpeedSheet && (
-        <div className="speed-sheet" onClick={(event) => event.stopPropagation()}>
-          {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
-            <button
-              key={rate}
-              type="button"
-              className={playbackRate === rate ? 'active' : ''}
-              onClick={() => applyPlaybackRate(rate)}
-            >
-              {rate}x
-            </button>
-          ))}
-        </div>
-      )}
-
-      {showQualitySheet && (
-        <div className="quality-sheet" onClick={(event) => event.stopPropagation()}>
-          {[
-            { value: 'auto', label: '自动' },
-            { value: 'high', label: '高清' },
-            { value: 'low', label: '流畅' },
-          ].map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={qualityMode === item.value ? 'active' : ''}
-              onClick={() => applyQualityMode(item.value)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {showActionSheet && (
-        <div className="press-actions" onClick={(event) => event.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => {
-              setShowActionSheet(false);
-              setShowSpeedSheet(true);
-            }}
-          >
-            倍速
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowActionSheet(false);
-              setShowQualitySheet(true);
-            }}
-          >
-            清晰度
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowActionSheet(false);
-              onNotInterested?.();
-            }}
-          >
-            不感兴趣
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowActionSheet(false);
-              onReport?.();
-            }}
-          >
-            举报
-          </button>
+        <div className="action-sheet-mask" onClick={() => setShowActionSheet(false)}>
+          <div className="action-sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="action-row">
+              <div className="action-label">⚡ 倍速</div>
+              <div className="action-chips">
+                {[0.5, 0.75, 1, 1.5, 2].map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    className={playbackRate === rate ? 'active' : ''}
+                    onClick={() => applyPlaybackRate(rate)}
+                  >
+                    {rate}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="action-row">
+              <div className="action-label">🎞 清晰度</div>
+              <div className="action-chips">
+                {['360p', '540p', '720p'].map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={qualityMode === mode ? 'active' : ''}
+                    onClick={() => applyQualityMode(mode)}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="action-plain-btn"
+              onClick={() => {
+                setShowActionSheet(false);
+                onNotInterested?.();
+              }}
+            >
+              🙈 不感兴趣
+            </button>
+            <button
+              type="button"
+              className="action-plain-btn action-danger"
+              onClick={() => {
+                setShowActionSheet(false);
+                onReport?.();
+              }}
+            >
+              🚩 举报
+            </button>
+          </div>
         </div>
       )}
 
@@ -543,8 +582,6 @@ const VideoPlayer = ({
             onClick={() => {
               setShowEpisodeSheet((prev) => !prev);
               setShowActionSheet(false);
-              setShowSpeedSheet(false);
-              setShowQualitySheet(false);
             }}
           >
             {seriesButtonText || `全集${episodes.length}集`}

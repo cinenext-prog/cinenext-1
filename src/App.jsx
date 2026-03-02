@@ -746,6 +746,25 @@ function App() {
     }));
   }, []);
 
+  const selectRelativeEpisode = useCallback((seriesKey, currentEpisodeId, step) => {
+    const series = homeVideos.find((item) => item.seriesKey === seriesKey);
+    if (!series || !Array.isArray(series.episodes) || series.episodes.length <= 1) {
+      return;
+    }
+
+    const currentIndex = Math.max(0, series.episodes.findIndex((item) => item.id === currentEpisodeId));
+    const nextIndex = Math.min(series.episodes.length - 1, Math.max(0, currentIndex + step));
+    const nextEpisodeId = series.episodes[nextIndex]?.id;
+    if (!nextEpisodeId || nextEpisodeId === currentEpisodeId) {
+      return;
+    }
+
+    setSelectedEpisodeMap((prev) => ({
+      ...prev,
+      [seriesKey]: nextEpisodeId,
+    }));
+  }, [homeVideos]);
+
   const markNotInterested = useCallback((video) => {
     const seriesKey = video?.seriesKey || getSeriesKey(video);
     if (!seriesKey) {
@@ -885,6 +904,7 @@ function App() {
           watchlist={watchlist}
           toggleWatchlist={toggleWatchlist}
           onSelectEpisode={selectSeriesEpisode}
+          onSelectRelativeEpisode={selectRelativeEpisode}
           onNotInterested={markNotInterested}
           onReportVideo={reportVideo}
           formatCount={formatCount}

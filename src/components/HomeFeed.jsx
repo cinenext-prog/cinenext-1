@@ -27,6 +27,7 @@ function HomeFeed({
   watchlist,
   toggleWatchlist,
   onSelectEpisode,
+  onSelectRelativeEpisode,
   onNotInterested,
   onReportVideo,
   formatCount,
@@ -89,6 +90,10 @@ function HomeFeed({
                 episodes={video.episodes}
                 selectedEpisodeId={video.selectedEpisodeId}
                 onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
+                onSwipePrevEpisode={() => onSelectRelativeEpisode(video.seriesKey, video.selectedEpisodeId, -1)}
+                onSwipeNextEpisode={() => onSelectRelativeEpisode(video.seriesKey, video.selectedEpisodeId, 1)}
+                canSwipePrev={Array.isArray(video.episodes) && video.episodes.findIndex((item) => item.id === video.selectedEpisodeId) > 0}
+                canSwipeNext={Array.isArray(video.episodes) && video.episodes.findIndex((item) => item.id === video.selectedEpisodeId) < (video.episodes.length - 1)}
                 onNotInterested={() => onNotInterested(video)}
                 onReport={() => onReportVideo(video)}
                 onUnlock={() => requestUnlock(video)}
