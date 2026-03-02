@@ -102,7 +102,9 @@ const pickPlaybackUrl = (asset) => {
 
 const toPlaybackUrl = (playbackId) => {
   const prefix = String(process.env.LIVEPEER_RAW_HLS_PREFIX || '').trim();
-  const normalizedPrefix = prefix ? prefix.replace(/\/+$/, '') : 'https://livepeercdn.com/hls';
+  const normalizedPrefix = prefix
+    ? prefix.replace(/\/+$/, '')
+    : 'https://vod-cdn.lp-playback.studio/raw/jxf4iblf6wlsyor6526t4tcmtmqa/catalyst-vod-com/hls';
   return `${normalizedPrefix}/${playbackId}/index.m3u8`;
 };
 
