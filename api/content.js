@@ -2,14 +2,43 @@ import { badRequest, parseJsonBody } from './_lib/http.js';
 import { ensureDatabaseSchema } from './_lib/schema.js';
 import { query } from './_lib/db.js';
 
-const verifyAdmin = (req) => {
-  const token = String(process.env.ADMIN_WRITE_TOKEN || '').trim();
-  if (!token) {
-    return false;
+const getAdminAuthState = (req) => {
+  const expected = String(process.env.ADMIN_WRITE_TOKEN || '').trim();
+  const provided = String(req.headers['x-admin-token'] || '').trim();
+
+  if (!expected) {
+    return {
+      ok: false,
+      reason: 'ADMIN_WRITE_TOKEN not configured on server',
+      expectedLength: 0,
+      providedLength: provided.length,
+    };
   }
 
-  const fromHeader = String(req.headers['x-admin-token'] || '').trim();
-  return fromHeader === token;
+  if (!provided) {
+    return {
+      ok: false,
+      reason: 'X-Admin-Token header is missing',
+      expectedLength: expected.length,
+      providedLength: 0,
+    };
+  }
+
+  if (provided !== expected) {
+    return {
+      ok: false,
+      reason: 'X-Admin-Token does not match ADMIN_WRITE_TOKEN',
+      expectedLength: expected.length,
+      providedLength: provided.length,
+    };
+  }
+
+  return {
+    ok: true,
+    reason: 'ok',
+    expectedLength: expected.length,
+    providedLength: provided.length,
+  };
 };
 
 const parseNameInfo = (name) => {
@@ -165,8 +194,9 @@ const listFeed = async (res) => {
 };
 
 const upsertDrama = async (req, res) => {
-  if (!verifyAdmin(req)) {
-    return res.status(403).json({ error: 'Forbidden' });
+  const auth = getAdminAuthState(req);
+  if (!auth.ok) {
+    return res.status(403).json({ error: 'Forbidden', ...auth });
   }
 
   if (req.method !== 'POST') {
@@ -192,8 +222,9 @@ const upsertDrama = async (req, res) => {
 };
 
 const upsertEpisode = async (req, res) => {
-  if (!verifyAdmin(req)) {
-    return res.status(403).json({ error: 'Forbidden' });
+  const auth = getAdminAuthState(req);
+  if (!auth.ok) {
+    return res.status(403).json({ error: 'Forbidden', ...auth });
   }
 
   if (req.method !== 'POST') {
@@ -242,8 +273,9 @@ const upsertEpisode = async (req, res) => {
 };
 
 const syncAssets = async (req, res) => {
-  if (!verifyAdmin(req)) {
-    return res.status(403).json({ error: 'Forbidden' });
+  const auth = getAdminAuthState(req);
+  if (!auth.ok) {
+    return res.status(403).json({ error: 'Forbidden', ...auth });
   }
 
   if (req.method !== 'POST') {
@@ -317,8 +349,9 @@ const parseAssetPage = (payload) => {
 };
 
 const importFromLivepeer = async (req, res) => {
-  if (!verifyAdmin(req)) {
-    return res.status(403).json({ error: 'Forbidden' });
+  const auth = getAdminAuthState(req);
+  if (!auth.ok) {
+    return res.status(403).json({ error: 'Forbidden', ...auth });
   }
 
   if (req.method !== 'POST') {
@@ -428,8 +461,9 @@ const importFromLivepeer = async (req, res) => {
 };
 
 const deleteByAssetId = async (req, res) => {
-  if (!verifyAdmin(req)) {
-    return res.status(403).json({ error: 'Forbidden' });
+  const auth = getAdminAuthState(req);
+  if (!auth.ok) {
+    return res.status(403).json({ error: 'Forbidden', ...auth });
   }
 
   if (req.method !== 'POST') {

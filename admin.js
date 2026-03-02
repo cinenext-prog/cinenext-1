@@ -179,7 +179,13 @@ const requestBackend = async (action, { method = 'GET', body } = {}) => {
 
   if (!response.ok) {
     if (response.status === 403) {
-      throw new Error('后台 Token 无效：请确认页面填写值与 Vercel 的 ADMIN_WRITE_TOKEN 完全一致');
+      const reason = String(parsed?.reason || '').trim();
+      const expectedLength = Number(parsed?.expectedLength || 0);
+      const providedLength = Number(parsed?.providedLength || 0);
+      const suffix = reason
+        ? `（${reason}；期望长度 ${expectedLength}，实际长度 ${providedLength}）`
+        : '';
+      throw new Error(`后台 Token 无效${suffix}`);
     }
 
     if (response.status === 401) {
