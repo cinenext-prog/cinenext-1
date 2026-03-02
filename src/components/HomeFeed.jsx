@@ -5,6 +5,7 @@ const RENDER_RADIUS = 2;
 const EPISODE_SWIPE_PX = 118;
 const MIN_SWIPE_TIME_MS = 70;
 const MAX_SWIPE_TIME_MS = 650;
+const MAX_DRAG_PX = 180;
 
 function HomeFeed({
   loading,
@@ -35,16 +36,20 @@ function HomeFeed({
   onReportVideo,
   formatCount,
 }) {
-  const BrandMark = () => (
-    <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false">
+  const BrandLogo = () => (
+    <svg viewBox="0 0 172 32" aria-hidden="true" focusable="false">
       <defs>
-        <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#FF5454" />
-          <stop offset="100%" stopColor="#C6153C" />
+        <linearGradient id="cineGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#FF5A5F" />
+          <stop offset="100%" stopColor="#B50F36" />
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="26" height="26" rx="8" fill="url(#brandGrad)" />
-      <path d="M8.8 20.3V7.7h3.1l6.3 8.4V7.7h3v12.6h-3l-6.4-8.5v8.5z" fill="#fff" />
+      <rect x="0.8" y="1" width="30" height="30" rx="9" fill="url(#cineGrad)" />
+      <path d="M7.3 24V8h3.2l7.1 9.6V8h3.1v16h-3.2l-7.1-9.7V24z" fill="#fff" />
+      <path d="M18.2 12.4l7 3.6-7 3.6z" fill="#fff" opacity="0.96" />
+      <text x="40" y="22.5" fill="#ffffff" fontSize="16" fontWeight="900" letterSpacing="1.1" fontFamily="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+        CINENEXT
+      </text>
     </svg>
   );
 
@@ -65,6 +70,11 @@ function HomeFeed({
 
   const touchStartRef = useRef({ x: 0, y: 0 });
   const touchStartTimeRef = useRef(0);
+  const [dragState, setDragState] = useState({
+    seriesKey: '',
+    offsetY: 0,
+    dragging: false,
+  });
   const [switchSignal, setSwitchSignal] = useState({ key: '', dir: 0, tick: 0 });
 
   const activeVideo = videos[activeIndex] || null;
@@ -102,6 +112,12 @@ function HomeFeed({
     return false;
   };
 
+  const clampDrag = (deltaY) => {
+    if (deltaY > MAX_DRAG_PX) return MAX_DRAG_PX;
+    if (deltaY < -MAX_DRAG_PX) return -MAX_DRAG_PX;
+    return deltaY;
+  };
+
   const handleFeedTouchStart = (event) => {
     const point = event.changedTouches?.[0];
     if (!point) {
@@ -113,6 +129,14 @@ function HomeFeed({
       x: point.clientX,
       y: point.clientY,
     };
+
+    if (activeVideo?.seriesKey) {
+      setDragState({
+        seriesKey: activeVideo.seriesKey,
+        offsetY: 0,
+        dragging: true,
+      });
+    }
   };
 
   const handleFeedTouchMove = (event) => {
@@ -124,10 +148,17 @@ function HomeFeed({
     const deltaX = point.clientX - touchStartRef.current.x;
     const deltaY = point.clientY - touchStartRef.current.y;
     const isEpisodeSwipeCandidate =
-      Math.abs(deltaY) >= EPISODE_SWIPE_PX &&
-      Math.abs(deltaY) > Math.abs(deltaX) * 1.25;
+      Math.abs(deltaY) >= 10 &&
+      Math.abs(deltaY) > Math.abs(deltaX) * 1.2;
 
     if (isEpisodeSwipeCandidate) {
+      if (activeVideo?.seriesKey) {
+        setDragState((prev) => ({
+          seriesKey: activeVideo.seriesKey,
+          offsetY: clampDrag(deltaY),
+          dragging: true,
+        }));
+      }
       event.preventDefault();
       event.stopPropagation();
     }
@@ -142,6 +173,15 @@ function HomeFeed({
     const deltaX = point.clientX - touchStartRef.current.x;
     const deltaY = point.clientY - touchStartRef.current.y;
     const durationMs = Math.max(0, Date.now() - touchStartTimeRef.current);
+
+    if (activeVideo?.seriesKey) {
+      setDragState((prev) => ({
+        seriesKey: activeVideo.seriesKey,
+        offsetY: 0,
+        dragging: false,
+      }));
+    }
+
     triggerEpisodeSwipe(deltaX, deltaY, durationMs);
   };
 
@@ -161,8 +201,7 @@ function HomeFeed({
     <>
       <header className="home-topbar">
         <div className="brand-logo" aria-label="CineNext">
-          <span className="brand-mark" aria-hidden="true"><BrandMark /></span>
-          <span className="brand-text">CINENEXT</span>
+          <BrandLogo />
         </div>
         <div className="topbar-actions">
           <button
@@ -220,6 +259,8 @@ function HomeFeed({
                 selectedEpisodeId={video.selectedEpisodeId}
                 switchDirection={switchSignal.key === video.seriesKey ? switchSignal.dir : 0}
                 switchTick={switchSignal.key === video.seriesKey ? switchSignal.tick : 0}
+                dragOffsetY={dragState.seriesKey === video.seriesKey ? dragState.offsetY : 0}
+                isDraggingEpisode={dragState.seriesKey === video.seriesKey && dragState.dragging}
                 onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
                 onNotInterested={() => onNotInterested(video)}
                 onReport={() => onReportVideo(video)}

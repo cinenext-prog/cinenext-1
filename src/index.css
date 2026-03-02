@@ -39,7 +39,7 @@ input {
   position: fixed;
   left: 0;
   right: 0;
-  top: var(--miniapp-top-offset, calc(env(safe-area-inset-top, 0px) + 92px));
+  top: calc(var(--miniapp-top-offset, calc(env(safe-area-inset-top, 0px) + 92px)) - 3px);
   z-index: 20;
   display: flex;
   align-items: center;
@@ -49,30 +49,15 @@ input {
 }
 
 .brand-logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
+  display: inline-block;
+  width: 172px;
+  height: 32px;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.28));
 }
 
-.brand-mark {
-  width: 31px;
-  height: 31px;
-  display: grid;
-  place-items: center;
-  filter: drop-shadow(0 4px 12px rgba(198, 20, 58, 0.36));
-}
-
-.brand-mark svg {
-  width: 31px;
-  height: 31px;
-}
-
-.brand-text {
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: 0.9px;
-  color: #fff;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+.brand-logo svg {
+  width: 172px;
+  height: 32px;
 }
 
 .topbar-actions {
