@@ -15,8 +15,52 @@ const toText = (value, fallback = '') => (typeof value === 'string' ? value : fa
 export const toPlaybackUrl = (playbackId) => `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
 export const toCoverUrl = (playbackId) => `https://livepeer.studio/thumbnail/${playbackId}.png`;
 
+const pickPlaybackId = (asset) => {
+  if (typeof asset?.playbackId === 'string' && asset.playbackId.trim()) {
+    return asset.playbackId.trim();
+  }
+
+  if (Array.isArray(asset?.playbackIds) && asset.playbackIds.length > 0) {
+    const first = asset.playbackIds[0];
+    if (typeof first === 'string' && first.trim()) {
+      return first.trim();
+    }
+    if (typeof first?.id === 'string' && first.id.trim()) {
+      return first.id.trim();
+    }
+  }
+
+  if (typeof asset?.playback_id === 'string' && asset.playback_id.trim()) {
+    return asset.playback_id.trim();
+  }
+
+  return '';
+};
+
+const parseNameMeta = (name) => {
+  const raw = String(name || '').trim();
+  const matched = raw.match(/^(.*?)\s*第\s*(\d+)\s*集\s*(.*)$/i);
+
+  if (!matched) {
+    return {
+      seriesName: raw || '未命名短剧',
+      episode: 1,
+      title: raw || '未命名短剧 第1集',
+    };
+  }
+
+  const seriesName = String(matched[1] || '').trim() || '未命名短剧';
+  const episode = Math.max(1, Number(matched[2] || 1));
+
+  return {
+    seriesName,
+    episode,
+    title: `${seriesName} 第${episode}集`,
+  };
+};
+
 export const normalizeAsset = (asset, index) => {
-  const playbackId = toText(asset?.playbackId || asset?.playback_id);
+  const playbackId = pickPlaybackId(asset);
   if (!playbackId) {
     return null;
   }
@@ -27,7 +71,8 @@ export const normalizeAsset = (asset, index) => {
       ? asset.metadata
       : {};
 
-  const episode = metadata.episode || metadata.currentEpisode || index + 1;
+  const nameMeta = parseNameMeta(asset?.name || metadata?.title || '');
+  const episode = Number(metadata.episode || metadata.currentEpisode || nameMeta.episode || index + 1) || index + 1;
   const nftCollectionAddress = metadata.nftCollectionAddress || metadata.collectionAddress || '';
   const unlockType = nftCollectionAddress ? 'nft' : 'free';
   const price = metadata.price || metadata.unlockPrice || '0.5';
@@ -48,8 +93,10 @@ export const normalizeAsset = (asset, index) => {
     playbackId,
     playbackUrl: toPlaybackUrl(playbackId),
     coverUrl: toCoverUrl(playbackId),
-    title: toText(asset?.name || metadata.title, `短剧 ${index + 1}`),
-    episode: Number(episode) || index + 1,
+    title: toText(asset?.name || metadata.title, nameMeta.title || `短剧 ${index + 1}`),
+    seriesName: nameMeta.seriesName,
+    episode,
+    createdAt: String(asset?.createdAt || asset?.created_at || ''),
     likes: Number(metadata.likes || Math.floor(2000 + Math.random() * 9000)),
     views: Number(metadata.views || Math.floor(30000 + Math.random() * 300000)),
     actors: actorList,

@@ -5,6 +5,7 @@ import SearchPage from './components/SearchPage';
 import usePersistentState from './hooks/usePersistentState';
 import useTelegramSetup from './hooks/useTelegramSetup';
 import useVideoReloadSync from './hooks/useVideoReloadSync';
+import { showRewardedAd } from './lib/adsgram';
 import {
   HOT_KEYWORDS,
   LOCAL_VIDEO_KEY_SET,
@@ -18,9 +19,37 @@ const STORAGE_KEYS = {
   searchHistory: 'cinenext_search_history',
   watchlist: 'cinenext_watchlist',
   interactions: 'cinenext_interactions',
+  adUnlocks: 'cinenext_ad_unlocks',
 };
+const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
 
 const getTelegramWebApp = () => window.Telegram?.WebApp || null;
+const getTelegramInitData = () => getTelegramWebApp()?.initData || '';
+
+const postApi = async (url, payload = {}) => {
+  const initData = getTelegramInitData();
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  let result = {};
+  try {
+    result = await response.json();
+  } catch {
+    result = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(result?.error || '请求失败');
+  }
+
+  return result;
+};
 
 function App() {
   const [tonConnectUI] = useTonConnectUI();
@@ -36,9 +65,11 @@ function App() {
   const [searchHistory, setSearchHistory] = usePersistentState(STORAGE_KEYS.searchHistory, []);
   const [watchlist, setWatchlist] = usePersistentState(STORAGE_KEYS.watchlist, []);
   const [interactions, setInteractions] = usePersistentState(STORAGE_KEYS.interactions, {});
+  const [adUnlocks, setAdUnlocks] = usePersistentState(STORAGE_KEYS.adUnlocks, {});
   const [accessMap, setAccessMap] = useState({});
 
   const [unlockingId, setUnlockingId] = useState('');
+  const [rewardingId, setRewardingId] = useState('');
   const [reloadTick, setReloadTick] = useState(0);
 
   const feedRef = useRef(null);
@@ -60,25 +91,122 @@ function App() {
     currentVideoIdRef.current = activeVideo?.id || null;
   }, [activeVideo?.id]);
 
+  useEffect(() => {
+    const initData = getTelegramInitData();
+    if (!initData) {
+      return;
+    }
+
+    postApi('/api/auth/telegram', { initData }).catch(() => {
+      // ignore auth sync error in non-telegram or unconfigured backend
+    });
+  }, []);
+
   const fetchLivepeerAssets = useCallback(async () => {
-    const apiKey = import.meta.env.VITE_LIVEPEER_API_KEY;
+    const apiKey = import.meta.env.VITE_LIVEPEER_API_KEY || localStorage.getItem(API_KEY_STORAGE) || '';
     if (!apiKey) {
       return [];
     }
 
-    const response = await fetch('https://livepeer.studio/api/asset?limit=60', {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
+    const parseAssetPage = (payload) => {
+      if (Array.isArray(payload)) {
+        return { items: payload, nextCursor: '', hasNext: false };
+      }
 
-    if (!response.ok) {
-      throw new Error('获取 Livepeer 资源失败');
+      const items = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.assets)
+          ? payload.assets
+          : Array.isArray(payload?.items)
+            ? payload.items
+            : [];
+
+      const nextCursor =
+        payload?.nextCursor || payload?.next_cursor || payload?.meta?.nextCursor || payload?.meta?.next_cursor || '';
+
+      const hasNext = Boolean(payload?.hasNextPage || payload?.hasNext || payload?.meta?.hasNextPage || nextCursor);
+
+      return {
+        items,
+        nextCursor: String(nextCursor || ''),
+        hasNext,
+      };
+    };
+
+    const requestPage = async ({ page, cursor }) => {
+      const query = new URLSearchParams();
+      query.set('limit', '100');
+      query.set('page', String(page));
+      if (cursor) {
+        query.set('cursor', cursor);
+      }
+
+      const response = await fetch(`https://livepeer.studio/api/asset?${query.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('获取 Livepeer 资源失败');
+      }
+
+      return response.json();
+    };
+
+    const rawItems = [];
+    let page = 1;
+    let cursor = '';
+
+    for (let index = 0; index < 50; index += 1) {
+      const payload = await requestPage({ page, cursor });
+      const parsed = parseAssetPage(payload);
+
+      if (!parsed.items.length) {
+        break;
+      }
+
+      rawItems.push(...parsed.items);
+
+      if (parsed.nextCursor) {
+        cursor = parsed.nextCursor;
+        page += 1;
+        continue;
+      }
+
+      if (!parsed.hasNext || parsed.items.length < 100) {
+        break;
+      }
+
+      page += 1;
     }
 
-    const data = await response.json();
-    const list = Array.isArray(data) ? data : data?.assets || [];
-    return list.map(normalizeAsset).filter(Boolean);
+    const uniqueAssets = [];
+    const seen = new Set();
+    rawItems.forEach((item) => {
+      const id = String(item?.id || '').trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      uniqueAssets.push(item);
+    });
+
+    return uniqueAssets
+      .map(normalizeAsset)
+      .filter(Boolean)
+      .sort((left, right) => {
+        const leftSeries = String(left.seriesName || left.title || '');
+        const rightSeries = String(right.seriesName || right.title || '');
+
+        if (leftSeries !== rightSeries) {
+          return leftSeries.localeCompare(rightSeries, 'zh-CN');
+        }
+
+        if (left.episode !== right.episode) {
+          return left.episode - right.episode;
+        }
+
+        return String(left.createdAt || '').localeCompare(String(right.createdAt || ''));
+      });
   }, []);
 
   useEffect(() => {
@@ -277,6 +405,28 @@ function App() {
         likes: current.likes + 1,
       };
     });
+
+    postApi('/api/interactions/toggle-like', { videoId: video.id })
+      .then((result) => {
+        if (typeof result?.likes !== 'number' || typeof result?.liked !== 'boolean') {
+          return;
+        }
+
+        setInteractions((prev) => {
+          const current = prev[video.id] || { liked: false, likes: 0, comments: 0, shares: 0 };
+          return {
+            ...prev,
+            [video.id]: {
+              ...current,
+              liked: result.liked,
+              likes: Math.max(0, result.likes - Number(video.likes || 0)),
+            },
+          };
+        });
+      })
+      .catch(() => {
+        // keep local fallback behavior
+      });
   }, [updateInteraction]);
 
   const openComment = useCallback((video) => {
@@ -289,6 +439,30 @@ function App() {
       ...current,
       comments: current.comments + 1,
     }));
+
+    postApi('/api/comments/create', {
+      videoId: video.id,
+      content: comment.trim(),
+    })
+      .then((result) => {
+        if (typeof result?.comments !== 'number') {
+          return;
+        }
+
+        setInteractions((prev) => {
+          const current = prev[video.id] || { liked: false, likes: 0, comments: 0, shares: 0 };
+          return {
+            ...prev,
+            [video.id]: {
+              ...current,
+              comments: result.comments,
+            },
+          };
+        });
+      })
+      .catch(() => {
+        // keep local fallback behavior
+      });
   }, [updateInteraction]);
 
   const shareVideo = useCallback(async (video) => {
@@ -313,10 +487,92 @@ function App() {
         ...current,
         shares: current.shares + 1,
       }));
+
+      postApi('/api/share/track', {
+        videoId: video.id,
+      })
+        .then((result) => {
+          if (typeof result?.shares !== 'number') {
+            return;
+          }
+
+          setInteractions((prev) => {
+            const current = prev[video.id] || { liked: false, likes: 0, comments: 0, shares: 0 };
+            return {
+              ...prev,
+              [video.id]: {
+                ...current,
+                shares: result.shares,
+              },
+            };
+          });
+        })
+        .catch(() => {
+          // keep local fallback behavior
+        });
     } catch {
       // ignore canceled share
     }
   }, [updateInteraction]);
+
+  const reportAdsEvent = useCallback((video, eventType, payload = {}) => {
+    const telegramId = Number(getTelegramWebApp()?.initDataUnsafe?.user?.id || 0) || null;
+
+    postApi('/api/adsgram/event', {
+      videoId: video?.id || null,
+      eventType,
+      telegramId,
+      payload,
+    }).catch(() => {
+      // ignore ad telemetry errors
+    });
+  }, []);
+
+  const watchAdToUnlock = useCallback(async (video) => {
+    if (!video?.id) {
+      return;
+    }
+
+    const blockId = String(import.meta.env.VITE_ADSGRAM_BLOCK_ID || '').trim();
+    if (!blockId) {
+      window.alert('广告配置未完成，请设置 VITE_ADSGRAM_BLOCK_ID');
+      return;
+    }
+
+    try {
+      setRewardingId(video.id);
+      reportAdsEvent(video, 'impression', { blockId });
+      const result = await showRewardedAd({ blockId });
+      reportAdsEvent(video, 'reward', { blockId, result: result || null });
+
+      setAdUnlocks((prev) => ({
+        ...prev,
+        [video.id]: true,
+      }));
+    } catch (error) {
+      reportAdsEvent(video, 'error', {
+        blockId,
+        message: error instanceof Error ? error.message : 'unknown error',
+      });
+    } finally {
+      setRewardingId('');
+    }
+  }, [reportAdsEvent, setAdUnlocks]);
+
+  const reportPlaybackEvent = useCallback((video, eventType, positionSeconds = 0, payload = {}) => {
+    if (!video?.id || !eventType) {
+      return;
+    }
+
+    postApi('/api/playback/event', {
+      videoId: video.id,
+      eventType,
+      positionSeconds,
+      payload,
+    }).catch(() => {
+      // ignore telemetry errors
+    });
+  }, []);
 
   const toggleWatchlist = useCallback((video) => {
     setWatchlist((prev) =>
@@ -410,14 +666,33 @@ function App() {
 
     try {
       setUnlockingId(video.id);
-      await tonConnectUI.sendTransaction({
+      const orderResult = await postApi('/api/orders/create', {
+        videoId: video.id,
+        amountTon,
+        walletAddress: wallet?.account?.address || '',
+      });
+
+      const orderNo = String(orderResult?.order?.order_no || '');
+      const payTo = String(orderResult?.payTo || target || '').trim();
+      if (!orderNo || !payTo) {
+        throw new Error('创建订单失败');
+      }
+
+      const txResult = await tonConnectUI.sendTransaction({
         validUntil: Math.floor(Date.now() / 1000) + 600,
         messages: [
           {
-            address: target,
+            address: payTo,
             amount,
           },
         ],
+      });
+
+      await postApi('/api/orders/confirm', {
+        orderNo,
+        status: 'paid',
+        proof: txResult,
+        txHash: txResult?.boc || null,
       });
 
       const hasAccess = await checkNftAccess(video, wallet?.account?.address);
@@ -447,11 +722,15 @@ function App() {
           activeIndex={activeIndex}
           getInteraction={getInteraction}
           accessMap={accessMap}
+          adUnlocks={adUnlocks}
           unlockingId={unlockingId}
+          rewardingId={rewardingId}
           requestUnlock={requestUnlock}
+          watchAdToUnlock={watchAdToUnlock}
           toggleLike={toggleLike}
           openComment={openComment}
           shareVideo={shareVideo}
+          reportPlaybackEvent={reportPlaybackEvent}
           watchlist={watchlist}
           toggleWatchlist={toggleWatchlist}
           formatCount={formatCount}

@@ -15,11 +15,15 @@ function HomeFeed({
   activeIndex,
   getInteraction,
   accessMap,
+  adUnlocks,
   unlockingId,
+  rewardingId,
   requestUnlock,
+  watchAdToUnlock,
   toggleLike,
   openComment,
   shareVideo,
+  reportPlaybackEvent,
   watchlist,
   toggleWatchlist,
   formatCount,
@@ -53,7 +57,7 @@ function HomeFeed({
       <div className="feed-scroll" ref={feedRef} onScroll={onFeedScroll}>
         {videos.map((video, index) => {
           const shouldRenderHeavy = Math.abs(index - activeIndex) <= RENDER_RADIUS;
-          const blocked = video.unlockType === 'nft' && !accessMap[video.id];
+          const blocked = video.unlockType === 'nft' && !accessMap[video.id] && !adUnlocks[video.id];
           const lockLabel = wallet
             ? `需 NFT 解锁 · ${video.price} TON`
             : '连接钱包后解锁观看';
@@ -79,6 +83,9 @@ function HomeFeed({
                 blocked={blocked}
                 lockLabel={unlockingId === video.id ? '解锁处理中...' : lockLabel}
                 onUnlock={() => requestUnlock(video)}
+                onPlaybackEvent={(eventType, positionSeconds, payload) =>
+                  reportPlaybackEvent(video, eventType, positionSeconds, payload)
+                }
               />
 
               <div className="video-meta">
@@ -103,6 +110,11 @@ function HomeFeed({
                 <button type="button" onClick={() => shareVideo(video)}>
                   ↗ {formatCount(interaction.shares)}
                 </button>
+                {video.unlockType === 'nft' && !accessMap[video.id] && (
+                  <button type="button" onClick={() => watchAdToUnlock(video)}>
+                    {rewardingId === video.id ? '⏳ 广告中' : '🎬 广告解锁'}
+                  </button>
+                )}
                 <button type="button" onClick={() => toggleWatchlist(video)}>
                   {watchlist.includes(video.id) ? '★ 已追' : '☆ 追剧'}
                 </button>

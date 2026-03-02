@@ -14,6 +14,7 @@ const VideoPlayer = ({
   blocked,
   lockLabel,
   onUnlock,
+  onPlaybackEvent,
 }) => {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
@@ -21,6 +22,7 @@ const VideoPlayer = ({
   const autoplayRetryTimerRef = useRef(null);
   const timeRafRef = useRef(0);
   const pendingTimeRef = useRef(0);
+  const lastProgressBucketRef = useRef(-1);
 
   const [isPaused, setIsPaused] = useState(false);
   const [showSpeedSheet, setShowSpeedSheet] = useState(false);
@@ -181,9 +183,11 @@ const VideoPlayer = ({
     const handlePlay = () => {
       setIsPaused(false);
       setNeedUserStart(false);
+      onPlaybackEvent?.('play', video.currentTime, { rate: video.playbackRate });
     };
     const handlePause = () => {
       setIsPaused(true);
+      onPlaybackEvent?.('pause', video.currentTime, { rate: video.playbackRate });
     };
     const handleCanPlay = () => {
       attemptAutoplay();
@@ -198,6 +202,27 @@ const VideoPlayer = ({
       };
       const reason = mediaError?.code ? codeMap[mediaError.code] || '播放失败' : '播放失败';
       setPlayError(reason);
+      onPlaybackEvent?.('error', video.currentTime, {
+        code: mediaError?.code || null,
+        reason,
+      });
+    };
+
+    const handleEnded = () => {
+      onPlaybackEvent?.('ended', video.currentTime, { duration: video.duration || 0 });
+    };
+
+    const handleProgressReport = () => {
+      const seconds = Number.isFinite(video.currentTime) ? Math.floor(video.currentTime) : 0;
+      const bucket = Math.floor(seconds / 15);
+      if (bucket <= 0 || bucket === lastProgressBucketRef.current) {
+        return;
+      }
+
+      lastProgressBucketRef.current = bucket;
+      onPlaybackEvent?.('progress', seconds, {
+        duration: Number.isFinite(video.duration) ? Math.floor(video.duration) : 0,
+      });
     };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -206,6 +231,8 @@ const VideoPlayer = ({
     video.addEventListener('pause', handlePause);
     video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('error', handleError);
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('timeupdate', handleProgressReport);
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -214,12 +241,14 @@ const VideoPlayer = ({
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('error', handleError);
+      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('timeupdate', handleProgressReport);
       if (timeRafRef.current) {
         window.cancelAnimationFrame(timeRafRef.current);
         timeRafRef.current = 0;
       }
     };
-  }, [active, blocked]);
+  }, [active, blocked, onPlaybackEvent]);
 
   const togglePause = () => {
     const video = videoRef.current;

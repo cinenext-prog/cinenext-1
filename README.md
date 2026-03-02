@@ -2,6 +2,45 @@
 
 Livepeer 播放 Mini App + 纯前端管理后台。
 
+## 新增后端能力（Vercel Functions）
+
+已实现以下服务端接口（需配置 Postgres）：
+
+- 用户鉴权：`/api/auth/telegram`、`/api/users/me`
+- 互动：`/api/interactions/toggle-like`、`/api/comments/create`、`/api/share/track`
+- 播放回传：`/api/playback/event`
+- 广告事件：`/api/adsgram/event`
+- 剧文本管理：`/api/dramas/list`、`/api/dramas/upsert`
+- 订单（TON）：`/api/orders/create`、`/api/orders/confirm`
+- 上链批处理（Cron）：`/api/cron/onchain-batch`、`/api/cron/onchain-anchor`
+
+数据库初始化 SQL：`db/schema.sql`
+
+关键环境变量（见 `.env.example`）：
+
+- `DATABASE_URL`
+- `TELEGRAM_BOT_TOKEN`
+- `TONPAY_MERCHANT_WALLET`
+- `CRON_SECRET`
+- `VITE_ADSGRAM_BLOCK_ID`
+- `ONCHAIN_ANCHOR_WEBHOOK`
+
+## 广告解锁
+
+前端已接入 AdsGram 激励广告流程：
+
+- NFT 锁定视频会出现“广告解锁”按钮
+- 成功观看后会记录 `reward` 事件并临时解锁当前视频
+- 相关回传接口：`/api/adsgram/event`
+
+需要在环境变量中配置：`VITE_ADSGRAM_BLOCK_ID`
+
+## 上链锚定流程
+
+- `/api/cron/onchain-batch` 每小时生成一条 batch（Merkle Root）
+- 配置 `ONCHAIN_ANCHOR_WEBHOOK` 后会自动尝试提交上链并回写 `tx_hash`
+- 也可由外部服务调用 `/api/cron/onchain-anchor` 手动回写 `batchId + txHash`
+
 ## 本地开发
 
 ```bash
