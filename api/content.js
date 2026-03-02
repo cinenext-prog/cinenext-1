@@ -100,6 +100,12 @@ const pickPlaybackUrl = (asset) => {
   return '';
 };
 
+const toPlaybackUrl = (playbackId) => {
+  const prefix = String(process.env.LIVEPEER_RAW_HLS_PREFIX || '').trim();
+  const normalizedPrefix = prefix ? prefix.replace(/\/+$/, '') : 'https://livepeercdn.com/hls';
+  return `${normalizedPrefix}/${playbackId}/index.m3u8`;
+};
+
 const slugify = (value) =>
   String(value || '')
     .trim()
@@ -205,7 +211,7 @@ const listFeed = async (res) => {
   const videos = rows.map((row) => ({
     id: `db-${row.episode_id}`,
     playbackId: row.playback_id,
-    playbackUrl: row.playback_url || null,
+    playbackUrl: row.playback_url || (row.playback_id ? toPlaybackUrl(row.playback_id) : null),
     title: row.episode_title || `${row.drama_title} 第${row.episode_number}集`,
     seriesName: row.drama_title,
     episode: row.episode_number,
@@ -272,7 +278,7 @@ const upsertEpisode = async (req, res) => {
 
   const title = String(body.title || `${dramaTitle} 第${episodeNumber}集`).trim();
   const playbackId = String(body.playbackId || '').trim() || null;
-  const playbackUrl = String(body.playbackUrl || '').trim() || null;
+  const playbackUrl = String(body.playbackUrl || '').trim() || (playbackId ? toPlaybackUrl(playbackId) : null);
   const livepeerAssetId = String(body.livepeerAssetId || '').trim() || null;
   const isFree = body.isFree !== false;
   const priceTon = Number(body.priceTon || 0);
@@ -330,7 +336,7 @@ const syncAssets = async (req, res) => {
     const episodeNumber = Math.max(1, Number(item.episodeNumber || 1));
     const livepeerAssetId = String(item.id || item.livepeerAssetId || '').trim() || null;
     const playbackId = String(item.playbackId || '').trim() || null;
-    const playbackUrl = String(item.playbackUrl || '').trim() || null;
+    const playbackUrl = String(item.playbackUrl || '').trim() || (playbackId ? toPlaybackUrl(playbackId) : null);
 
     if (!dramaTitle) {
       continue;
@@ -472,7 +478,7 @@ const importFromLivepeer = async (req, res) => {
 
     const playbackId = pickPlaybackId(item);
     if (!playbackId) continue;
-    const playbackUrl = pickPlaybackUrl(item) || null;
+    const playbackUrl = pickPlaybackUrl(item) || toPlaybackUrl(playbackId);
 
     const name = String(item?.name || '').trim();
     const parsedName = parseNameInfo(name);

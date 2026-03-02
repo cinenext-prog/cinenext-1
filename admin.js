@@ -97,6 +97,14 @@ const parseNameInfo = (name) => {
 
 const buildEpisodeName = (seriesName, episodeNumber) => `${String(seriesName || '').trim()} 第${episodeNumber}集`;
 
+const getPlaybackPrefix = () => {
+  const configured = String(import.meta.env.VITE_LIVEPEER_RAW_HLS_PREFIX || '').trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+  return 'https://livepeercdn.com/hls';
+};
+
 const pickPlaybackId = (asset) => {
   if (asset.playbackId) return String(asset.playbackId);
   if (Array.isArray(asset.playbackIds) && asset.playbackIds[0]?.id) return String(asset.playbackIds[0].id);
@@ -104,7 +112,7 @@ const pickPlaybackId = (asset) => {
   return '';
 };
 
-const playbackUrlFromId = (playbackId) => `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
+const playbackUrlFromId = (playbackId) => `${getPlaybackPrefix()}/${playbackId}/index.m3u8`;
 
 const normalizeAsset = (asset) => {
   const name = String(asset.name || '未命名资源');

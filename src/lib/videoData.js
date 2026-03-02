@@ -51,7 +51,15 @@ export const LOCAL_VIDEO_VERSION_KEY = 'cinenext_videos_version';
 
 const toText = (value, fallback = '') => (typeof value === 'string' ? value : fallback);
 
-export const toPlaybackUrl = (playbackId) => `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
+const getPlaybackPrefix = () => {
+  const configured = String(import.meta.env.VITE_LIVEPEER_RAW_HLS_PREFIX || '').trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+  return 'https://livepeercdn.com/hls';
+};
+
+export const toPlaybackUrl = (playbackId) => `${getPlaybackPrefix()}/${playbackId}/index.m3u8`;
 export const toCoverUrl = (playbackId) => `https://livepeer.studio/thumbnail/${playbackId}.png`;
 
 const pickPlaybackId = (asset) => {
