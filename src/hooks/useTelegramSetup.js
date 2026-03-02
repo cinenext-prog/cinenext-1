@@ -2,6 +2,26 @@ import { useEffect } from 'react';
 
 const getTelegramWebApp = () => window.Telegram?.WebApp || null;
 
+const requestTelegramFullscreen = (tg) => {
+  if (!tg) {
+    return;
+  }
+
+  try {
+    if (typeof tg.requestFullscreen === 'function') {
+      tg.requestFullscreen();
+      return;
+    }
+
+    const webView = window.Telegram?.WebView;
+    if (typeof webView?.postEvent === 'function') {
+      webView.postEvent('web_app_request_fullscreen');
+    }
+  } catch {
+    // ignore fullscreen capability errors on unsupported clients
+  }
+};
+
 function useTelegramSetup(page, setPage) {
   useEffect(() => {
     const tg = getTelegramWebApp();
@@ -11,8 +31,9 @@ function useTelegramSetup(page, setPage) {
 
     tg.ready();
     tg.expand();
-    if (typeof tg.disableVerticalSwipes === 'function') {
-      tg.disableVerticalSwipes();
+    requestTelegramFullscreen(tg);
+    if (typeof tg.enableVerticalSwipes === 'function') {
+      tg.enableVerticalSwipes();
     }
 
     const theme = tg.themeParams || {};

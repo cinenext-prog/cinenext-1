@@ -34,6 +34,7 @@ const VideoPlayer = ({
   const longPressTriggeredRef = useRef(false);
   const pointerStartRef = useRef({ x: 0, y: 0 });
   const pointerMovedRef = useRef(false);
+  const touchStartRef = useRef({ x: 0, y: 0 });
   const timeRafRef = useRef(0);
   const pendingTimeRef = useRef(0);
   const lastProgressBucketRef = useRef(-1);
@@ -328,7 +329,27 @@ const VideoPlayer = ({
     }
   };
 
-  const handlePointerDown = () => {
+  const triggerSwipeEpisode = (deltaX, deltaY) => {
+    if (showActionSheet || showEpisodeSheet) {
+      return;
+    }
+
+    const isVerticalSwipe = Math.abs(deltaY) >= SWIPE_TRIGGER_PX && Math.abs(deltaY) > Math.abs(deltaX);
+    if (!isVerticalSwipe) {
+      return;
+    }
+
+    if (deltaY < 0 && canSwipeNext) {
+      onSwipeNextEpisode?.();
+      return;
+    }
+
+    if (deltaY > 0 && canSwipePrev) {
+      onSwipePrevEpisode?.();
+    }
+  };
+
+  const handlePointerDown = (event) => {
     clearLongPress();
     longPressTriggeredRef.current = false;
     pointerMovedRef.current = false;
@@ -348,28 +369,30 @@ const VideoPlayer = ({
     }
   };
 
-  const handlePointerUp = (event) => {
-    const deltaY = event.clientY - pointerStartRef.current.y;
-    const deltaX = event.clientX - pointerStartRef.current.x;
+  const handlePointerUp = () => {
     clearLongPress();
+  };
 
-    if (showActionSheet || showEpisodeSheet) {
+  const handleTouchStart = (event) => {
+    const point = event.changedTouches?.[0];
+    if (!point) {
+      return;
+    }
+    touchStartRef.current = {
+      x: point.clientX,
+      y: point.clientY,
+    };
+  };
+
+  const handleTouchEnd = (event) => {
+    const point = event.changedTouches?.[0];
+    if (!point) {
       return;
     }
 
-    const isVerticalSwipe = Math.abs(deltaY) >= SWIPE_TRIGGER_PX && Math.abs(deltaY) > Math.abs(deltaX);
-    if (!isVerticalSwipe) {
-      return;
-    }
-
-    if (deltaY < 0 && canSwipeNext) {
-      onSwipeNextEpisode?.();
-      return;
-    }
-
-    if (deltaY > 0 && canSwipePrev) {
-      onSwipePrevEpisode?.();
-    }
+    const deltaX = point.clientX - touchStartRef.current.x;
+    const deltaY = point.clientY - touchStartRef.current.y;
+    triggerSwipeEpisode(deltaX, deltaY);
   };
 
   const handleTap = () => {
@@ -409,7 +432,6 @@ const VideoPlayer = ({
       video.playbackRate = rate;
     }
     setPlaybackRate(rate);
-    setShowSpeedSheet(false);
   };
 
   const applyQualityMode = (mode) => {
@@ -468,6 +490,8 @@ const VideoPlayer = ({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       onClick={handleTap}
     >
       {preload ? (
