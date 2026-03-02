@@ -33,6 +33,21 @@ function HomeFeed({
   onReportVideo,
   formatCount,
 }) {
+  const WalletIcon = () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4 8.2A2.2 2.2 0 0 1 6.2 6h10.4A2.2 2.2 0 0 1 18.8 8.2v.8H20a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1.2v.8A2.2 2.2 0 0 1 16.6 22H6.2A2.2 2.2 0 0 1 4 19.8V8.2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18.8 9H7a2 2 0 0 1 0-4h10.3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="18" cy="13.5" r="1.2" fill="currentColor" />
+    </svg>
+  );
+
+  const SearchIcon = () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16 16L20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+
   const touchStartRef = useRef({ x: 0, y: 0 });
   const touchLockedRef = useRef(false);
 
@@ -128,7 +143,10 @@ function HomeFeed({
   return (
     <>
       <header className="home-topbar">
-        <div className="logo">CineNext</div>
+        <div className="brand-logo" aria-label="CineNext">
+          <span className="brand-mark" aria-hidden="true">CN</span>
+          <span className="brand-text">CineNext</span>
+        </div>
         <div className="topbar-actions">
           <button
             type="button"
@@ -137,10 +155,10 @@ function HomeFeed({
             aria-label={wallet ? '钱包已连接' : '连接钱包'}
             title={wallet ? '钱包已连接' : '连接钱包'}
           >
-            👛
+            <WalletIcon />
           </button>
           <button type="button" className="icon-btn" onClick={openSearch} aria-label="搜索">
-            🔍
+            <SearchIcon />
           </button>
         </div>
       </header>
@@ -184,10 +202,6 @@ function HomeFeed({
                 episodes={video.episodes}
                 selectedEpisodeId={video.selectedEpisodeId}
                 onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
-                onSwipePrevEpisode={() => onSelectRelativeEpisode(video.seriesKey, video.selectedEpisodeId, -1)}
-                onSwipeNextEpisode={() => onSelectRelativeEpisode(video.seriesKey, video.selectedEpisodeId, 1)}
-                canSwipePrev={Array.isArray(video.episodes) && video.episodes.findIndex((item) => item.id === video.selectedEpisodeId) > 0}
-                canSwipeNext={Array.isArray(video.episodes) && video.episodes.findIndex((item) => item.id === video.selectedEpisodeId) < (video.episodes.length - 1)}
                 onNotInterested={() => onNotInterested(video)}
                 onReport={() => onReportVideo(video)}
                 onUnlock={() => requestUnlock(video)}
