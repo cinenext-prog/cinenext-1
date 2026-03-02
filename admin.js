@@ -681,8 +681,23 @@ clearAdminTokenBtn.addEventListener('click', () => {
 
 syncBackendBtn.addEventListener('click', async () => {
   try {
+    const apiKey = readApiKey();
+
+    if (apiKey) {
+      const result = await requestBackend('import-livepeer', {
+        method: 'POST',
+        body: {
+          livepeerApiKey: apiKey,
+        },
+      });
+
+      await loadAssetsFromBackend();
+      showToast(`服务端导入完成：已入库 ${result?.imported || 0} / 拉取 ${result?.totalPulled || 0}`);
+      return;
+    }
+
     if (assets.length === 0) {
-      showToast('当前无可同步资产，请先点击“连接并拉取”', true);
+      showToast('当前无可同步资产，请先点击“连接并拉取”或填写 API Key 后直接同步', true);
       return;
     }
 

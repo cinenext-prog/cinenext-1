@@ -12,6 +12,45 @@ const verifyAdmin = (req) => {
   return fromHeader === token;
 };
 
+const parseNameInfo = (name) => {
+  const text = String(name || '').trim();
+  const matched = text.match(/^(.*?)\s*第\s*(\d+)\s*集\s*(.*)$/i);
+
+  if (!matched) {
+    return {
+      seriesName: text || '未分组剧名',
+      episodeNumber: 1,
+    };
+  }
+
+  return {
+    seriesName: String(matched[1] || '').trim() || '未分组剧名',
+    episodeNumber: Math.max(1, Number(matched[2] || 1)),
+  };
+};
+
+const pickPlaybackId = (asset) => {
+  if (typeof asset?.playbackId === 'string' && asset.playbackId.trim()) {
+    return asset.playbackId.trim();
+  }
+
+  if (Array.isArray(asset?.playbackIds) && asset.playbackIds.length > 0) {
+    const first = asset.playbackIds[0];
+    if (typeof first === 'string' && first.trim()) {
+      return first.trim();
+    }
+    if (typeof first?.id === 'string' && first.id.trim()) {
+      return first.id.trim();
+    }
+  }
+
+  if (typeof asset?.playback_id === 'string' && asset.playback_id.trim()) {
+    return asset.playback_id.trim();
+  }
+
+  return '';
+};
+
 const slugify = (value) =>
   String(value || '')
     .trim()
@@ -252,6 +291,142 @@ const syncAssets = async (req, res) => {
   return res.status(200).json({ synced });
 };
 
+const parseAssetPage = (payload) => {
+  if (Array.isArray(payload)) {
+    return { items: payload, nextCursor: '', hasNext: false };
+  }
+
+  const items = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.assets)
+      ? payload.assets
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : [];
+
+  const nextCursor =
+    payload?.nextCursor || payload?.next_cursor || payload?.meta?.nextCursor || payload?.meta?.next_cursor || '';
+
+  const hasNext = Boolean(payload?.hasNextPage || payload?.hasNext || payload?.meta?.hasNextPage || nextCursor);
+
+  return {
+    items,
+    nextCursor: String(nextCursor || ''),
+    hasNext,
+  };
+};
+
+const importFromLivepeer = async (req, res) => {
+  if (!verifyAdmin(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  const body = parseJsonBody(req.body);
+  const apiKey = String(body.livepeerApiKey || '').trim();
+
+  if (!apiKey) {
+    return badRequest(res, 'Missing required field: livepeerApiKey');
+  }
+
+  const limit = 100;
+  const maxPages = 50;
+  const rawItems = [];
+
+  let page = 1;
+  let cursor = '';
+
+  for (let index = 0; index < maxPages; index += 1) {
+    const query = new URLSearchParams();
+    query.set('limit', String(limit));
+    query.set('page', String(page));
+    if (cursor) query.set('cursor', cursor);
+
+    const response = await fetch(`https://livepeer.studio/api/asset?${query.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      const reason = await response.text();
+      return res.status(400).json({ error: `Livepeer pull failed: ${reason || response.status}` });
+    }
+
+    const payload = await response.json();
+    const parsed = parseAssetPage(payload);
+
+    if (!parsed.items.length) {
+      break;
+    }
+
+    rawItems.push(...parsed.items);
+
+    if (parsed.nextCursor) {
+      cursor = parsed.nextCursor;
+      page += 1;
+      continue;
+    }
+
+    if (parsed.items.length < limit || !parsed.hasNext) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  const uniqueItems = [];
+  const seen = new Set();
+  rawItems.forEach((item) => {
+    const id = String(item?.id || '').trim();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    uniqueItems.push(item);
+  });
+
+  let imported = 0;
+
+  for (const item of uniqueItems) {
+    const assetId = String(item?.id || '').trim();
+    if (!assetId) continue;
+
+    const playbackId = pickPlaybackId(item);
+    if (!playbackId) continue;
+
+    const name = String(item?.name || '').trim();
+    const parsedName = parseNameInfo(name);
+    const dramaTitle = parsedName.seriesName;
+    const dramaSlug = slugify(dramaTitle);
+
+    const drama = await upsertDramaBySlug({
+      slug: dramaSlug,
+      title: dramaTitle,
+      status: 'published',
+    });
+
+    await query(
+      `
+      INSERT INTO episodes (drama_id, episode_number, title, playback_id, livepeer_asset_id, is_free, price_ton, updated_at)
+      VALUES ($1, $2, $3, $4, $5, TRUE, 0, NOW())
+      ON CONFLICT (drama_id, episode_number)
+      DO UPDATE SET
+        title = EXCLUDED.title,
+        playback_id = COALESCE(EXCLUDED.playback_id, episodes.playback_id),
+        livepeer_asset_id = COALESCE(EXCLUDED.livepeer_asset_id, episodes.livepeer_asset_id),
+        updated_at = NOW()
+      `,
+      [drama.id, parsedName.episodeNumber, name || `${dramaTitle} 第${parsedName.episodeNumber}集`, playbackId, assetId]
+    );
+
+    imported += 1;
+  }
+
+  return res.status(200).json({ imported, totalPulled: uniqueItems.length });
+};
+
 const deleteByAssetId = async (req, res) => {
   if (!verifyAdmin(req)) {
     return res.status(403).json({ error: 'Forbidden' });
@@ -296,6 +471,10 @@ export default async function handler(req, res) {
 
     if (action === 'sync-assets') {
       return await syncAssets(req, res);
+    }
+
+    if (action === 'import-livepeer') {
+      return await importFromLivepeer(req, res);
     }
 
     if (action === 'delete-by-asset-id') {
