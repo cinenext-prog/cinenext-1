@@ -7,6 +7,7 @@ import useTelegramSetup from './hooks/useTelegramSetup';
 import useVideoReloadSync from './hooks/useVideoReloadSync';
 import { showRewardedAd } from './lib/adsgram';
 import {
+  BUILTIN_DEMO_VIDEOS,
   HOT_KEYWORDS,
   LOCAL_VIDEO_KEY_SET,
   LOCAL_VIDEO_VERSION_KEY,
@@ -235,7 +236,10 @@ function App() {
           }
         });
 
-        const nextVideos = [...remoteMap.values(), ...legacyVideos];
+        const mergedVideos = [...remoteMap.values(), ...legacyVideos];
+        const nextVideos = mergedVideos.length > 0
+          ? mergedVideos
+          : BUILTIN_DEMO_VIDEOS.map((video, index) => normalizeAsset(video, index) || video).filter(Boolean);
 
         if (!cancelled) {
           const currentId = currentVideoIdRef.current;
@@ -245,8 +249,8 @@ function App() {
 
           setVideos(nextVideos);
           setActiveIndex(nextIndex);
-          if (nextVideos.length === 0) {
-            setLoadError(remoteError || '暂无可播放内容，请配置 Livepeer API Key 或先添加资源。');
+          if (mergedVideos.length === 0 && remoteError) {
+            setLoadError(`已切换演示视频（${remoteError}）`);
           }
         }
       } catch (error) {

@@ -2,6 +2,45 @@ import { safeGet } from './storage';
 
 export const HOT_KEYWORDS = ['短剧', '逆袭', '豪门', '重生', '甜宠'];
 
+export const BUILTIN_DEMO_VIDEOS = [
+  {
+    id: 'demo-x36xhzz-1',
+    playbackId: 'demo-x36xhzz-1',
+    playbackUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    coverUrl: 'https://image.mux.com/x36xhzz/thumbnail.jpg?time=2',
+    title: '演示短剧 · 先导片',
+    episode: 1,
+    likes: 2680,
+    views: 39800,
+    unlockType: 'free',
+    keywords: ['演示', '剧情'],
+  },
+  {
+    id: 'demo-test001-2',
+    playbackId: 'demo-test001-2',
+    playbackUrl: 'https://test-streams.mux.dev/test_001/stream.m3u8',
+    coverUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=640&q=80',
+    title: '演示短剧 · 高能反转',
+    episode: 2,
+    likes: 3120,
+    views: 52100,
+    unlockType: 'free',
+    keywords: ['反转', '悬疑'],
+  },
+  {
+    id: 'demo-tears-3',
+    playbackId: 'demo-tears-3',
+    playbackUrl: 'https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8',
+    coverUrl: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=640&q=80',
+    title: '演示短剧 · 完整片段',
+    episode: 3,
+    likes: 4890,
+    views: 73400,
+    unlockType: 'free',
+    keywords: ['动作', '科幻'],
+  },
+];
+
 export const LOCAL_VIDEO_KEYS = [
   'cinenext_videos',
   'legacyVideos',
@@ -124,7 +163,7 @@ export const normalizeLegacyVideo = (video, index) => {
     id: String(video?.id || `legacy-${playbackId}`),
     playbackId,
     playbackUrl: toText(video?.playbackUrl, toPlaybackUrl(playbackId)),
-    coverUrl: toCoverUrl(playbackId),
+    coverUrl: toText(video?.coverUrl, toCoverUrl(playbackId)),
     title: toText(video?.title, `短剧 ${index + 1}`),
     episode,
     likes,
