@@ -16,12 +16,22 @@ const VideoPlayer = ({
   seriesButtonText,
   episodes,
   selectedEpisodeId,
+  openActionsSignal, // 新增
   onSelectEpisode,
   onNotInterested,
   onReport,
   onUnlock,
   onPlaybackEvent,
 }) => {
+    // 监听 openActionsSignal，变化时弹出 ActionSheet
+    const lastActionSignalRef = useRef(0);
+    useEffect(() => {
+      if (openActionsSignal && openActionsSignal !== lastActionSignalRef.current) {
+        setShowActionSheet(true);
+        setShowEpisodeSheet(false);
+        lastActionSignalRef.current = openActionsSignal;
+      }
+    }, [openActionsSignal]);
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const autoplayRetryTimerRef = useRef(null);

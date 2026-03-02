@@ -70,7 +70,9 @@ function HomeFeed({
 
   const touchStartRef = useRef({ x: 0, y: 0 });
   const touchStartTimeRef = useRef(0);
-  const touchMovingRef = useRef(false);
+  const [dragOffset, setDragOffset] = useState(0); // 跟手位移
+  const [isDragging, setIsDragging] = useState(false);
+  const [animating, setAnimating] = useState(false);
   const [actionSheetSignal, setActionSheetSignal] = useState({
     key: '',
     tick: 0,
@@ -78,102 +80,85 @@ function HomeFeed({
 
   const activeVideo = videos[activeIndex] || null;
 
-  const triggerEpisodeSwipe = (deltaX, deltaY, durationMs) => {
-    if (!activeVideo || !Array.isArray(activeVideo.episodes) || activeVideo.episodes.length <= 1) {
-      return false;
-    }
-
-    if (durationMs < MIN_SWIPE_TIME_MS || durationMs > MAX_SWIPE_TIME_MS) {
-      return false;
-    }
-
-    if (Math.abs(deltaY) < EPISODE_SWIPE_PX || Math.abs(deltaY) <= Math.abs(deltaX) * 1.25) {
-      return false;
-    }
-
+  // 跟手滑动切集核心逻辑
+  const triggerEpisodeSwipe = (deltaY, durationMs, velocityY) => {
+    if (!activeVideo || !Array.isArray(activeVideo.episodes) || activeVideo.episodes.length <= 1) return false;
     const currentIndex = activeVideo.episodes.findIndex((item) => item.id === activeVideo.selectedEpisodeId);
-    if (currentIndex < 0) {
-      return false;
+    if (currentIndex < 0) return false;
+    // 切换判定：距离/速度/时间
+    const distancePassed = Math.abs(deltaY) > window.innerHeight * 0.18;
+    const velocityPassed = Math.abs(velocityY) > 0.45;
+    const shouldSwitch = (distancePassed || velocityPassed) && durationMs < 600;
+    if (shouldSwitch) {
+      if (deltaY < 0 && currentIndex < activeVideo.episodes.length - 1) {
+        onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, 1);
+        return true;
+      }
+      if (deltaY > 0 && currentIndex > 0) {
+        onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, -1);
+        return true;
+      }
     }
-
-    if (deltaY < 0 && currentIndex < activeVideo.episodes.length - 1) {
-      onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, 1);
-      return true;
-    }
-
-    if (deltaY > 0 && currentIndex > 0) {
-      onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, -1);
-      return true;
-    }
-
     return false;
   };
 
   const resetDragState = () => {
-    touchMovingRef.current = false;
+    setIsDragging(false);
+    setDragOffset(0);
+    setAnimating(false);
   };
 
   const handleFeedTouchStart = (event) => {
+    if (animating) return;
     const point = event.changedTouches?.[0];
-    if (!point) {
-      return;
-    }
-
+    if (!point) return;
     touchStartTimeRef.current = Date.now();
-    touchMovingRef.current = false;
-    touchStartRef.current = {
-      x: point.clientX,
-      y: point.clientY,
-    };
-
+    touchStartRef.current = { x: point.clientX, y: point.clientY };
+    setIsDragging(true);
+    setDragOffset(0);
   };
 
   const handleFeedTouchMove = (event) => {
+    if (!isDragging || animating) return;
     const point = event.changedTouches?.[0];
-    if (!point) {
-      return;
-    }
-
+    if (!point) return;
     const deltaX = point.clientX - touchStartRef.current.x;
     const deltaY = point.clientY - touchStartRef.current.y;
-    const isEpisodeSwipeCandidate =
-      Math.abs(deltaY) >= 6 &&
-      Math.abs(deltaY) > Math.abs(deltaX) * EPISODE_SWIPE_RATIO;
-
-    if (isEpisodeSwipeCandidate) {
-      touchMovingRef.current = true;
+    // 只允许竖直方向
+    if (Math.abs(deltaY) > Math.abs(deltaX) * 1.1) {
+      setDragOffset(deltaY);
       event.preventDefault();
       event.stopPropagation();
     }
   };
 
   const handleFeedTouchEnd = (event) => {
+    if (!isDragging || animating) return;
     const point = event.changedTouches?.[0];
-    if (!point) {
-      return;
-    }
-
-    const moved = touchMovingRef.current;
-    const deltaX = point.clientX - touchStartRef.current.x;
+    if (!point) return;
     const deltaY = point.clientY - touchStartRef.current.y;
-    const durationMs = Math.max(0, Date.now() - touchStartTimeRef.current);
-    const velocityY = deltaY / Math.max(durationMs, 1);
-
-    const distancePassed = Math.abs(deltaY) >= EPISODE_SWIPE_PX;
-    const velocityPassed = Math.abs(velocityY) >= 0.52;
-    const shouldTrySwitch = (distancePassed || velocityPassed)
-      && Math.abs(deltaY) > Math.abs(deltaX) * EPISODE_SWIPE_RATIO
-      && durationMs >= MIN_SWIPE_TIME_MS
-      && durationMs <= MAX_SWIPE_TIME_MS;
-
-    const switched = shouldTrySwitch ? triggerEpisodeSwipe(deltaX, deltaY, durationMs) : false;
-
-    resetDragState();
-
-    if (switched || moved) {
-      event.preventDefault();
-      event.stopPropagation();
+    const durationMs = Math.max(1, Date.now() - touchStartTimeRef.current);
+    const velocityY = deltaY / durationMs;
+    const switched = triggerEpisodeSwipe(deltaY, durationMs, velocityY);
+    setAnimating(true);
+    // 切换时，动画到整屏；否则回弹
+    const target = switched ? (deltaY > 0 ? window.innerHeight : -window.innerHeight) : 0;
+    const start = dragOffset;
+    const duration = 220;
+    const startTime = performance.now();
+    function animate(now) {
+      const t = Math.min(1, (now - startTime) / duration);
+      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      setDragOffset(start + (target - start) * ease);
+      if (t < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        resetDragState();
+      }
     }
+    requestAnimationFrame(animate);
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   const handleFeedTouchCancel = () => {
@@ -223,95 +208,113 @@ function HomeFeed({
         className="feed-scroll"
         ref={feedRef}
         onScroll={handleFeedScroll}
-        onTouchStart={handleFeedTouchStart}
-        onTouchMove={handleFeedTouchMove}
-        onTouchEnd={handleFeedTouchEnd}
-        onTouchCancel={handleFeedTouchCancel}
-      >
-        {videos.map((video, index) => {
-          const shouldRenderHeavy = Math.abs(index - activeIndex) <= RENDER_RADIUS;
-          const blocked = video.unlockType === 'nft' && !accessMap[video.id] && !adUnlocks[video.id];
-          const lockLabel = wallet
-            ? `需 NFT 解锁 · ${video.price} TON`
-            : '连接钱包后解锁观看';
-
-          if (!shouldRenderHeavy) {
+        <div
+          className="feed-scroll"
+          ref={feedRef}
+          onScroll={handleFeedScroll}
+          onTouchStart={handleFeedTouchStart}
+          onTouchMove={handleFeedTouchMove}
+          onTouchEnd={handleFeedTouchEnd}
+          onTouchCancel={handleFeedTouchCancel}
+        >
+          {videos.map((video, index) => {
+            const shouldRenderHeavy = Math.abs(index - activeIndex) <= RENDER_RADIUS;
+            const blocked = video.unlockType === 'nft' && !accessMap[video.id] && !adUnlocks[video.id];
+            const lockLabel = wallet
+              ? `需 NFT 解锁 · ${video.price} TON`
+              : '连接钱包后解锁观看';
+            if (!shouldRenderHeavy) {
+              return (
+                <section key={video.id} className="feed-item">
+                  <div className="feed-item-placeholder" />
+                </section>
+              );
+            }
+            const interaction = getInteraction(video.id);
+            // 跟手滑动 transform
+            let translateY = 0;
+            if (index === activeIndex) {
+              translateY = isDragging || animating ? dragOffset : 0;
+            } else if (index === activeIndex - 1) {
+              translateY = isDragging || animating ? dragOffset - window.innerHeight : -window.innerHeight;
+            } else if (index === activeIndex + 1) {
+              translateY = isDragging || animating ? dragOffset + window.innerHeight : window.innerHeight;
+            } else {
+              translateY = 0;
+            }
             return (
-              <section key={video.id} className="feed-item">
-                <img className="video-poster" src={video.coverUrl} alt={video.title} loading="lazy" />
+              <section
+                key={video.id}
+                className="feed-item"
+                style={{
+                  zIndex: 10 - Math.abs(index - activeIndex),
+                  pointerEvents: index === activeIndex ? 'auto' : 'none',
+                  opacity: Math.abs(index - activeIndex) > 1 ? 0 : 1,
+                  transition: !isDragging && animating ? 'opacity 0.18s' : 'none',
+                  transform: `translateY(${translateY}px)`,
+                  transitionProperty: 'transform, opacity',
+                  transitionDuration: isDragging ? '0ms' : '220ms',
+                  willChange: isDragging ? 'transform' : undefined,
+                }}
+              >
+                <VideoPlayer
+                  sourceUrl={video.playbackUrl}
+                  poster={video.coverUrl}
+                  title={video.seriesTitle || video.title}
+                  active={index === activeIndex}
+                  preload={true}
+                  blocked={blocked}
+                  lockLabel={unlockingId === video.id ? '解锁处理中...' : lockLabel}
+                  seriesButtonText={video.seriesSummary}
+                  episodes={video.episodes}
+                  selectedEpisodeId={video.selectedEpisodeId}
+                  openActionsSignal={actionSheetSignal.key === video.id ? actionSheetSignal.tick : 0}
+                  onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
+                  onNotInterested={() => onNotInterested(video)}
+                  onReport={() => onReportVideo(video)}
+                  onUnlock={() => requestUnlock(video)}
+                  onPlaybackEvent={(eventType, positionSeconds, payload) =>
+                    reportPlaybackEvent(video, eventType, positionSeconds, payload)
+                  }
+                />
+                <div className="video-meta">
+                  <h2>{video.seriesTitle || video.title}</h2>
+                  <p>第 {video.episode} 集</p>
+                  <div className="meta-tags">
+                    <span>热度 {formatCount(video.views)}</span>
+                    <span>点赞 {formatCount(interaction.likes)}</span>
+                    <span className={video.unlockType === 'nft' ? 'tag-lock' : 'tag-free'}>
+                      {video.unlockType === 'nft' ? '需 NFT 解锁' : '免费'}
+                    </span>
+                  </div>
+                </div>
+                <div className="video-actions" onClick={(event) => event.stopPropagation()}>
+                  <button type="button" onClick={() => toggleLike(video)} className={interaction.liked ? 'active' : ''}>
+                    ❤ {formatCount(interaction.likes)}
+                  </button>
+                  <button type="button" onClick={() => openComment(video)}>
+                    💬 {formatCount(interaction.comments)}
+                  </button>
+                  <button type="button" onClick={() => shareVideo(video)}>
+                    ↗ {formatCount(interaction.shares)}
+                  </button>
+                  {video.unlockType === 'nft' && !accessMap[video.id] && (
+                    <button type="button" onClick={() => watchAdToUnlock(video)}>
+                      {rewardingId === video.id ? '⏳ 广告中' : '🎬 广告解锁'}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => toggleWatchlist(video)}>
+                    {watchlist.includes(video.id) ? '★ 已追' : '☆ 追剧'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionSheetSignal({ key: video.id, tick: Date.now() })}
+                    aria-label="更多操作"
+                  >
+                    ...
+                  </button>
+                </div>
               </section>
             );
-          }
-
-          const interaction = getInteraction(video);
-
-          return (
-            <section key={video.id} className="feed-item">
-              <VideoPlayer
-                sourceUrl={video.playbackUrl}
-                poster={video.coverUrl}
-                title={video.seriesTitle || video.title}
-                active={index === activeIndex}
-                preload={true}
-                blocked={blocked}
-                lockLabel={unlockingId === video.id ? '解锁处理中...' : lockLabel}
-                seriesButtonText={video.seriesSummary}
-                episodes={video.episodes}
-                selectedEpisodeId={video.selectedEpisodeId}
-                openActionsSignal={actionSheetSignal.key === video.id ? actionSheetSignal.tick : 0}
-                onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
-                onNotInterested={() => onNotInterested(video)}
-                onReport={() => onReportVideo(video)}
-                onUnlock={() => requestUnlock(video)}
-                onPlaybackEvent={(eventType, positionSeconds, payload) =>
-                  reportPlaybackEvent(video, eventType, positionSeconds, payload)
-                }
-              />
-
-              <div className="video-meta">
-                <h2>{video.seriesTitle || video.title}</h2>
-                <p>第 {video.episode} 集</p>
-                <div className="meta-tags">
-                  <span>热度 {formatCount(video.views)}</span>
-                  <span>点赞 {formatCount(interaction.likes)}</span>
-                  <span className={video.unlockType === 'nft' ? 'tag-lock' : 'tag-free'}>
-                    {video.unlockType === 'nft' ? '需 NFT 解锁' : '免费'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="video-actions" onClick={(event) => event.stopPropagation()}>
-                <button type="button" onClick={() => toggleLike(video)} className={interaction.liked ? 'active' : ''}>
-                  ❤ {formatCount(interaction.likes)}
-                </button>
-                <button type="button" onClick={() => openComment(video)}>
-                  💬 {formatCount(interaction.comments)}
-                </button>
-                <button type="button" onClick={() => shareVideo(video)}>
-                  ↗ {formatCount(interaction.shares)}
-                </button>
-                {video.unlockType === 'nft' && !accessMap[video.id] && (
-                  <button type="button" onClick={() => watchAdToUnlock(video)}>
-                    {rewardingId === video.id ? '⏳ 广告中' : '🎬 广告解锁'}
-                  </button>
-                )}
-                <button type="button" onClick={() => toggleWatchlist(video)}>
-                  {watchlist.includes(video.id) ? '★ 已追' : '☆ 追剧'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActionSheetSignal({ key: video.id, tick: Date.now() })}
-                  aria-label="更多操作"
-                >
-                  ...
-                </button>
-              </div>
-            </section>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
-export default React.memo(HomeFeed);
+          })}
+        </div>
