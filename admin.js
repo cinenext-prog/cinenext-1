@@ -178,6 +178,18 @@ const requestBackend = async (action, { method = 'GET', body } = {}) => {
   }
 
   if (!response.ok) {
+    if (response.status === 403) {
+      throw new Error('后台 Token 无效：请确认页面填写值与 Vercel 的 ADMIN_WRITE_TOKEN 完全一致');
+    }
+
+    if (response.status === 401) {
+      throw new Error('未授权：请先填写后台 Token');
+    }
+
+    if (response.status >= 500) {
+      throw new Error('后台服务异常：请检查 DATABASE_URL 和函数部署状态');
+    }
+
     throw new Error(parsed?.error || parsed?.message || text || `请求失败（HTTP ${response.status}）`);
   }
 
@@ -675,7 +687,8 @@ syncBackendBtn.addEventListener('click', async () => {
     }
 
     await syncAssetsToBackend(assets, { strict: true });
-    showToast(`后台同步成功：${assets.length} 条`);
+    await loadAssetsFromBackend();
+    showToast(`后台同步成功，已回读校验：${assets.length} 条`);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '后台同步失败', true);
   }
