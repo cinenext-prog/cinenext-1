@@ -10,6 +10,7 @@ const clearKeyBtn = document.querySelector('#clear-key');
 const adminTokenInput = document.querySelector('#admin-token');
 const saveAdminTokenBtn = document.querySelector('#save-admin-token');
 const clearAdminTokenBtn = document.querySelector('#clear-admin-token');
+const syncBackendBtn = document.querySelector('#sync-backend');
 const loadBackendBtn = document.querySelector('#load-backend');
 const apiStatus = document.querySelector('#api-status');
 
@@ -212,9 +213,16 @@ const loadAssetsFromBackend = async () => {
   showToast(`已从后台加载 ${assets.length} 条资产`);
 };
 
-const syncAssetsToBackend = async (list) => {
+const syncAssetsToBackend = async (list, { strict = false } = {}) => {
   const token = readAdminToken();
-  if (!token || !Array.isArray(list) || list.length === 0) {
+  if (!Array.isArray(list) || list.length === 0) {
+    return;
+  }
+
+  if (!token) {
+    if (strict) {
+      throw new Error('请先填写后台写入 Token（ADMIN_WRITE_TOKEN）');
+    }
     return;
   }
 
@@ -657,6 +665,20 @@ clearAdminTokenBtn.addEventListener('click', () => {
   localStorage.removeItem(ADMIN_TOKEN_STORAGE);
   adminTokenInput.value = '';
   showToast('已清除后台 Token');
+});
+
+syncBackendBtn.addEventListener('click', async () => {
+  try {
+    if (assets.length === 0) {
+      showToast('当前无可同步资产，请先点击“连接并拉取”', true);
+      return;
+    }
+
+    await syncAssetsToBackend(assets, { strict: true });
+    showToast(`后台同步成功：${assets.length} 条`);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '后台同步失败', true);
+  }
 });
 
 loadBackendBtn.addEventListener('click', async () => {
