@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import VideoPlayer from './VideoPlayer';
 
 const RENDER_RADIUS = 2;
@@ -33,6 +33,20 @@ function HomeFeed({
   onReportVideo,
   formatCount,
 }) {
+  const BrandMark = () => (
+    <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#74A3FF" />
+          <stop offset="100%" stopColor="#33D0FF" />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="26" height="26" rx="9" fill="url(#brandGrad)" />
+      <path d="M18.9 9.4a6.4 6.4 0 1 0 0 9.2" fill="none" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" />
+      <path d="M13.7 10.6l5.6 3.4-5.6 3.4z" fill="#fff" />
+    </svg>
+  );
+
   const WalletIcon = () => (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M4 8.2A2.2 2.2 0 0 1 6.2 6h10.4A2.2 2.2 0 0 1 18.8 8.2v.8H20a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1.2v.8A2.2 2.2 0 0 1 16.6 22H6.2A2.2 2.2 0 0 1 4 19.8V8.2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -50,6 +64,8 @@ function HomeFeed({
 
   const touchStartRef = useRef({ x: 0, y: 0 });
   const touchLockedRef = useRef(false);
+  const switchDirRef = useRef(0);
+  const [switchSignal, setSwitchSignal] = useState({ key: '', dir: 0, tick: 0 });
 
   const activeVideo = videos[activeIndex] || null;
 
@@ -68,12 +84,16 @@ function HomeFeed({
     }
 
     if (deltaY < 0 && currentIndex < activeVideo.episodes.length - 1) {
+      switchDirRef.current = 1;
       onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, 1);
+      setSwitchSignal({ key: activeVideo.seriesKey, dir: 1, tick: Date.now() });
       return true;
     }
 
     if (deltaY > 0 && currentIndex > 0) {
+      switchDirRef.current = -1;
       onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, -1);
+      setSwitchSignal({ key: activeVideo.seriesKey, dir: -1, tick: Date.now() });
       return true;
     }
 
@@ -144,7 +164,7 @@ function HomeFeed({
     <>
       <header className="home-topbar">
         <div className="brand-logo" aria-label="CineNext">
-          <span className="brand-mark" aria-hidden="true">CN</span>
+          <span className="brand-mark" aria-hidden="true"><BrandMark /></span>
           <span className="brand-text">CineNext</span>
         </div>
         <div className="topbar-actions">
@@ -201,6 +221,8 @@ function HomeFeed({
                 seriesButtonText={video.seriesSummary}
                 episodes={video.episodes}
                 selectedEpisodeId={video.selectedEpisodeId}
+                switchDirection={switchSignal.key === video.seriesKey ? switchSignal.dir : 0}
+                switchTick={switchSignal.key === video.seriesKey ? switchSignal.tick : 0}
                 onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
                 onNotInterested={() => onNotInterested(video)}
                 onReport={() => onReportVideo(video)}
