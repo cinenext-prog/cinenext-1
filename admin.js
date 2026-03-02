@@ -1,10 +1,16 @@
 const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
+const ADMIN_TOKEN_STORAGE = 'cinenext_admin_write_token';
 const LIVEPEER_API_BASE = 'https://livepeer.studio/api';
+const CONTENT_API_PATH = '/api/content';
 
 const apiKeyInput = document.querySelector('#api-key');
 const saveKeyBtn = document.querySelector('#save-key');
 const connectBtn = document.querySelector('#connect-api');
 const clearKeyBtn = document.querySelector('#clear-key');
+const adminTokenInput = document.querySelector('#admin-token');
+const saveAdminTokenBtn = document.querySelector('#save-admin-token');
+const clearAdminTokenBtn = document.querySelector('#clear-admin-token');
+const loadBackendBtn = document.querySelector('#load-backend');
 const apiStatus = document.querySelector('#api-status');
 
 const goUploadBtn = document.querySelector('#go-upload');
@@ -37,6 +43,7 @@ const showToast = (text, isError = false) => {
 };
 
 const readApiKey = () => apiKeyInput.value.trim();
+const readAdminToken = () => adminTokenInput.value.trim();
 
 const setApiStatus = (text, isError = false) => {
   apiStatus.textContent = text;
@@ -148,6 +155,81 @@ const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
   }
 
   return parsed;
+};
+
+const requestBackend = async (action, { method = 'GET', body } = {}) => {
+  const token = readAdminToken();
+  const response = await fetch(`${CONTENT_API_PATH}?action=${encodeURIComponent(action)}`, {
+    method,
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { 'X-Admin-Token': token } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const text = await response.text();
+  let parsed = {};
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(parsed?.error || parsed?.message || text || `请求失败（HTTP ${response.status}）`);
+  }
+
+  return parsed;
+};
+
+const normalizeBackendEpisode = (drama, episode) => ({
+  id: String(episode.livepeerAssetId || episode.id),
+  name: String(episode.title || `${drama.title} 第${episode.episodeNumber}集`),
+  status: drama.status || 'published',
+  createdAt: episode.updatedAt || '',
+  playbackId: String(episode.playbackId || ''),
+  playbackUrl: episode.playbackId ? playbackUrlFromId(episode.playbackId) : '',
+  seriesName: drama.title,
+  episodeNumber: Number(episode.episodeNumber || 9999),
+});
+
+const loadAssetsFromBackend = async () => {
+  const payload = await requestBackend('library');
+  const dramas = Array.isArray(payload?.dramas) ? payload.dramas : [];
+  const nextAssets = [];
+
+  dramas.forEach((drama) => {
+    const episodes = Array.isArray(drama.episodes) ? drama.episodes : [];
+    episodes.forEach((episode) => {
+      nextAssets.push(normalizeBackendEpisode(drama, episode));
+    });
+  });
+
+  assets = nextAssets;
+  render();
+  setApiStatus(`后台加载成功，当前资产数量：${assets.length}`);
+  showToast(`已从后台加载 ${assets.length} 条资产`);
+};
+
+const syncAssetsToBackend = async (list) => {
+  const token = readAdminToken();
+  if (!token || !Array.isArray(list) || list.length === 0) {
+    return;
+  }
+
+  await requestBackend('sync-assets', {
+    method: 'POST',
+    body: {
+      assets: list.map((item) => ({
+        id: item.id,
+        name: item.name,
+        seriesName: item.seriesName,
+        episodeNumber: item.episodeNumber,
+        playbackId: item.playbackId,
+      })),
+    },
+  });
 };
 
 const toQueryString = (params) => {
@@ -417,6 +499,11 @@ const render = () => {
 const refreshAssets = async (showMessage = true) => {
   const list = await listAssets();
   assets = list.map(normalizeAsset);
+  try {
+    await syncAssetsToBackend(assets);
+  } catch (error) {
+    showToast(`云端拉取成功，但后台同步失败：${error instanceof Error ? error.message : '未知错误'}`, true);
+  }
   render();
   if (showMessage) {
     showToast(`已拉取 ${assets.length} 条资产`);
@@ -446,6 +533,16 @@ const deleteAsset = async (id) => {
   if (!confirmed) return;
 
   await requestLivepeer(`/asset/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  try {
+    await requestBackend('delete-by-asset-id', {
+      method: 'POST',
+      body: {
+        livepeerAssetId: id,
+      },
+    });
+  } catch {
+    // ignore backend delete errors to avoid blocking livepeer deletion
+  }
   assets = assets.filter((item) => item.id !== id);
   render();
   clearEditForm();
@@ -522,6 +619,7 @@ const moveEpisode = async (id, direction) => {
   });
 
   render();
+  await syncAssetsToBackend(assets);
   showToast('已调整顺序');
 };
 
@@ -545,7 +643,40 @@ clearKeyBtn.addEventListener('click', () => {
   showToast('已清除 API Key');
 });
 
+saveAdminTokenBtn.addEventListener('click', () => {
+  const token = readAdminToken();
+  if (!token) {
+    showToast('请先输入后台 Token', true);
+    return;
+  }
+  localStorage.setItem(ADMIN_TOKEN_STORAGE, token);
+  showToast('后台 Token 已保存到浏览器本地');
+});
+
+clearAdminTokenBtn.addEventListener('click', () => {
+  localStorage.removeItem(ADMIN_TOKEN_STORAGE);
+  adminTokenInput.value = '';
+  showToast('已清除后台 Token');
+});
+
+loadBackendBtn.addEventListener('click', async () => {
+  try {
+    await loadAssetsFromBackend();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '后台加载失败', true);
+  }
+});
+
 connectBtn.addEventListener('click', async () => {
+  if (!readApiKey()) {
+    try {
+      await loadAssetsFromBackend();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '后台加载失败', true);
+    }
+    return;
+  }
+
   try {
     setApiStatus('连接中...');
     await refreshAssets();
@@ -667,6 +798,7 @@ editForm.addEventListener('submit', async (event) => {
     showToast('已保存修改');
     clearEditForm();
     await refreshAssets(false);
+    await syncAssetsToBackend(assets);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '保存失败', true);
   }
@@ -674,11 +806,18 @@ editForm.addEventListener('submit', async (event) => {
 
 const bootstrap = async () => {
   const cachedKey = localStorage.getItem(API_KEY_STORAGE) || '';
+  const cachedAdminToken = localStorage.getItem(ADMIN_TOKEN_STORAGE) || '';
   apiKeyInput.value = cachedKey;
+  adminTokenInput.value = cachedAdminToken;
 
   if (!cachedKey) {
-    setApiStatus('尚未连接。');
-    render();
+    setApiStatus('未检测到 Livepeer Key，尝试从后台加载...');
+    try {
+      await loadAssetsFromBackend();
+    } catch {
+      setApiStatus('尚未连接。');
+      render();
+    }
     return;
   }
 

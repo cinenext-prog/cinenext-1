@@ -1,15 +1,20 @@
 import * as tus from 'tus-js-client';
 
 const API_KEY_STORAGE = 'cinenext_livepeer_api_key';
+const ADMIN_TOKEN_STORAGE = 'cinenext_admin_write_token';
 const SERIES_DRAFTS_STORAGE = 'cinenext_series_drafts';
 const LIVEPEER_API_BASES = ['https://livepeer.studio/api', 'https://livepeer.com/api'];
 const LIVEPEER_UPLOAD_PATHS = ['/asset/request-upload', '/asset/upload', '/asset/create-upload', '/asset/requestUpload'];
 const UPLOAD_PROXY_PATH = '/api/request-upload';
 const ASSET_UPDATE_PROXY_PATH = '/api/asset-update';
+const CONTENT_API_PATH = '/api/content';
 
 const apiKeyInput = document.querySelector('#api-key');
 const saveKeyBtn = document.querySelector('#save-key');
 const clearKeyBtn = document.querySelector('#clear-key');
+const adminTokenInput = document.querySelector('#admin-token');
+const saveAdminTokenBtn = document.querySelector('#save-admin-token');
+const clearAdminTokenBtn = document.querySelector('#clear-admin-token');
 const apiStatus = document.querySelector('#api-status');
 
 const seriesForm = document.querySelector('#series-form');
@@ -70,6 +75,7 @@ const showToast = (text, isError = false) => {
 };
 
 const readApiKey = () => apiKeyInput.value.trim();
+const readAdminToken = () => adminTokenInput.value.trim();
 
 const setApiStatus = (text, isError = false) => {
   apiStatus.textContent = text;
@@ -205,6 +211,72 @@ const requestLivepeer = async (path, { method = 'GET', body } = {}) => {
 
   const networkMessage = lastNetworkError instanceof Error ? lastNetworkError.message : 'Failed to fetch';
   throw new Error(`连接 Livepeer API 失败：${networkMessage}`);
+};
+
+const requestBackend = async (action, { method = 'GET', body } = {}) => {
+  const token = readAdminToken();
+  if (!token) {
+    throw new Error('缺少后台 Token（ADMIN_WRITE_TOKEN）');
+  }
+
+  const response = await fetch(`${CONTENT_API_PATH}?action=${encodeURIComponent(action)}`, {
+    method,
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      'X-Admin-Token': token,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const text = await response.text();
+  let parsed = {};
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(parsed?.error || parsed?.message || text || `请求失败（HTTP ${response.status}）`);
+  }
+
+  return parsed;
+};
+
+const saveDramaToBackend = async ({ title, totalEpisodes }) => {
+  const token = readAdminToken();
+  if (!token) {
+    return;
+  }
+
+  await requestBackend('upsert-drama', {
+    method: 'POST',
+    body: {
+      title,
+      synopsis: `总集数：${totalEpisodes}`,
+      status: 'published',
+    },
+  });
+};
+
+const saveEpisodeToBackend = async ({ dramaTitle, episodeNumber, title, livepeerAssetId, playbackId }) => {
+  const token = readAdminToken();
+  if (!token) {
+    return;
+  }
+
+  await requestBackend('upsert-episode', {
+    method: 'POST',
+    body: {
+      dramaTitle,
+      episodeNumber,
+      title,
+      livepeerAssetId,
+      playbackId,
+      isFree: true,
+      priceTon: 0,
+    },
+  });
 };
 
 const readSeriesDrafts = () => {
@@ -512,6 +584,23 @@ clearKeyBtn.addEventListener('click', () => {
   showToast('已清除 API Key');
 });
 
+saveAdminTokenBtn.addEventListener('click', () => {
+  const token = readAdminToken();
+  if (!token) {
+    showToast('请先输入后台 Token', true);
+    return;
+  }
+
+  localStorage.setItem(ADMIN_TOKEN_STORAGE, token);
+  showToast('后台 Token 已保存到浏览器本地');
+});
+
+clearAdminTokenBtn.addEventListener('click', () => {
+  localStorage.removeItem(ADMIN_TOKEN_STORAGE);
+  adminTokenInput.value = '';
+  showToast('已清除后台 Token');
+});
+
 seriesForm.addEventListener('submit', (event) => {
   event.preventDefault();
 
@@ -544,6 +633,16 @@ seriesForm.addEventListener('submit', (event) => {
   updateSeriesSelect();
   uploadSeriesSelect.value = seriesName;
   episodeNumberInput.value = '1';
+
+  saveDramaToBackend({ title: seriesName, totalEpisodes })
+    .then(() => {
+      if (readAdminToken()) {
+        showToast('已新建剧并写入后台');
+      }
+    })
+    .catch((error) => {
+      showToast(`剧信息已保存本地，但后台写入失败：${error instanceof Error ? error.message : '未知错误'}`, true);
+    });
 
   showToast(existingIndex >= 0 ? '已更新剧信息' : '已新建剧');
   setSeriesStatus(`剧《${seriesName}》已保存，请在步骤 2 按顺序上传。`);
@@ -648,6 +747,18 @@ uploadForm.addEventListener('submit', async (event) => {
         }
       }
 
+      try {
+        await saveEpisodeToBackend({
+          dramaTitle: selectedSeries.seriesName,
+          episodeNumber,
+          title: uploadName,
+          livepeerAssetId: assetId,
+          playbackId: '',
+        });
+      } catch (backendError) {
+        showToast(`第 ${episodeNumber} 集上传成功，但后台入库失败：${backendError instanceof Error ? backendError.message : '未知错误'}`, true);
+      }
+
       selectedSeries.nextEpisode = episodeNumber + 1;
     }
 
@@ -691,7 +802,9 @@ uploadResetBtn.addEventListener('click', () => {
 
 const bootstrap = () => {
   const cachedKey = localStorage.getItem(API_KEY_STORAGE) || '';
+  const cachedAdminToken = localStorage.getItem(ADMIN_TOKEN_STORAGE) || '';
   apiKeyInput.value = cachedKey;
+  adminTokenInput.value = cachedAdminToken;
 
   seriesDrafts = readSeriesDrafts();
   updateSeriesSelect();

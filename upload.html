@@ -26,6 +26,16 @@
             <a href="admin.html" class="link-btn secondary">返回资产列表</a>
           </div>
         </div>
+        <div class="inline-row">
+          <label class="inline-input">
+            后台写入 Token
+            <input id="admin-token" type="password" placeholder="用于写入数据库（ADMIN_WRITE_TOKEN）" autocomplete="off" />
+          </label>
+          <div class="actions-row">
+            <button type="button" id="save-admin-token" class="secondary">保存后台 Token</button>
+            <button type="button" id="clear-admin-token" class="danger">清除后台 Token</button>
+          </div>
+        </div>
         <p id="api-status" class="tip">尚未连接。</p>
       </section>
 

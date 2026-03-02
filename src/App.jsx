@@ -210,6 +210,30 @@ function App() {
       });
   }, []);
 
+  const fetchBackendFeed = useCallback(async () => {
+    const response = await fetch('/api/content?action=feed');
+    if (!response.ok) {
+      throw new Error('获取后台视频源失败');
+    }
+
+    const payload = await response.json();
+    const items = Array.isArray(payload?.videos) ? payload.videos : [];
+
+    return items
+      .map((item, index) => normalizeAsset(item, index))
+      .filter(Boolean)
+      .sort((left, right) => {
+        const leftSeries = String(left.seriesName || left.title || '');
+        const rightSeries = String(right.seriesName || right.title || '');
+
+        if (leftSeries !== rightSeries) {
+          return leftSeries.localeCompare(rightSeries, 'zh-CN');
+        }
+
+        return left.episode - right.episode;
+      });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -218,6 +242,13 @@ function App() {
       setLoadError('');
 
       try {
+        let backendVideos = [];
+        try {
+          backendVideos = await fetchBackendFeed();
+        } catch {
+          backendVideos = [];
+        }
+
         let remoteVideos = [];
         let remoteError = '';
 
@@ -230,6 +261,12 @@ function App() {
         const legacyVideos = readLegacyVideos();
 
         const remoteMap = new Map();
+        backendVideos.forEach((video) => {
+          if (!remoteMap.has(video.playbackId)) {
+            remoteMap.set(video.playbackId, video);
+          }
+        });
+
         remoteVideos.forEach((video) => {
           if (!remoteMap.has(video.playbackId)) {
             remoteMap.set(video.playbackId, video);
@@ -269,7 +306,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [reloadTick, fetchLivepeerAssets]);
+  }, [reloadTick, fetchBackendFeed, fetchLivepeerAssets]);
 
   const requestReload = useCallback(() => {
     setReloadTick((prev) => prev + 1);
