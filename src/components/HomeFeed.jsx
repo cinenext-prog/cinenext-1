@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import VideoPlayer from './VideoPlayer';
 
 const RENDER_RADIUS = 2;
-const EPISODE_SWIPE_PX = 118;
+const EPISODE_SWIPE_PX = 88;
 const MIN_SWIPE_TIME_MS = 70;
 const MAX_SWIPE_TIME_MS = 650;
 const MAX_DRAG_PX = 180;
@@ -70,12 +70,12 @@ function HomeFeed({
 
   const touchStartRef = useRef({ x: 0, y: 0 });
   const touchStartTimeRef = useRef(0);
+  const touchMovingRef = useRef(false);
   const [dragState, setDragState] = useState({
     seriesKey: '',
     offsetY: 0,
     dragging: false,
   });
-  const [switchSignal, setSwitchSignal] = useState({ key: '', dir: 0, tick: 0 });
 
   const activeVideo = videos[activeIndex] || null;
 
@@ -99,13 +99,11 @@ function HomeFeed({
 
     if (deltaY < 0 && currentIndex < activeVideo.episodes.length - 1) {
       onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, 1);
-      setSwitchSignal({ key: activeVideo.seriesKey, dir: 1, tick: Date.now() });
       return true;
     }
 
     if (deltaY > 0 && currentIndex > 0) {
       onSelectRelativeEpisode(activeVideo.seriesKey, activeVideo.selectedEpisodeId, -1);
-      setSwitchSignal({ key: activeVideo.seriesKey, dir: -1, tick: Date.now() });
       return true;
     }
 
@@ -118,6 +116,20 @@ function HomeFeed({
     return deltaY;
   };
 
+  const resetDragState = () => {
+    setDragState((prev) => {
+      if (!prev.dragging && prev.offsetY === 0) {
+        return prev;
+      }
+      return {
+        seriesKey: prev.seriesKey,
+        offsetY: 0,
+        dragging: false,
+      };
+    });
+    touchMovingRef.current = false;
+  };
+
   const handleFeedTouchStart = (event) => {
     const point = event.changedTouches?.[0];
     if (!point) {
@@ -125,6 +137,7 @@ function HomeFeed({
     }
 
     touchStartTimeRef.current = Date.now();
+    touchMovingRef.current = false;
     touchStartRef.current = {
       x: point.clientX,
       y: point.clientY,
@@ -148,10 +161,11 @@ function HomeFeed({
     const deltaX = point.clientX - touchStartRef.current.x;
     const deltaY = point.clientY - touchStartRef.current.y;
     const isEpisodeSwipeCandidate =
-      Math.abs(deltaY) >= 10 &&
+      Math.abs(deltaY) >= 6 &&
       Math.abs(deltaY) > Math.abs(deltaX) * 1.2;
 
     if (isEpisodeSwipeCandidate) {
+      touchMovingRef.current = true;
       if (activeVideo?.seriesKey) {
         setDragState((prev) => ({
           seriesKey: activeVideo.seriesKey,
@@ -170,23 +184,37 @@ function HomeFeed({
       return;
     }
 
+    const moved = touchMovingRef.current;
     const deltaX = point.clientX - touchStartRef.current.x;
     const deltaY = point.clientY - touchStartRef.current.y;
     const durationMs = Math.max(0, Date.now() - touchStartTimeRef.current);
+    const velocityY = deltaY / Math.max(durationMs, 1);
 
-    const switched = triggerEpisodeSwipe(deltaX, deltaY, durationMs);
+    const distancePassed = Math.abs(deltaY) >= EPISODE_SWIPE_PX;
+    const velocityPassed = Math.abs(velocityY) >= 0.52;
+    const shouldTrySwitch = (distancePassed || velocityPassed)
+      && Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+      && durationMs >= MIN_SWIPE_TIME_MS
+      && durationMs <= MAX_SWIPE_TIME_MS;
 
-    if (activeVideo?.seriesKey) {
-      setDragState((prev) => ({
-        seriesKey: activeVideo.seriesKey,
-        offsetY: 0,
-        dragging: false,
-      }));
-    }
+    const switched = shouldTrySwitch ? triggerEpisodeSwipe(deltaX, deltaY, durationMs) : false;
 
-    if (switched) {
+    resetDragState();
+
+    if (switched || moved) {
       event.preventDefault();
       event.stopPropagation();
+    }
+  };
+
+  const handleFeedTouchCancel = () => {
+    resetDragState();
+  };
+
+  const handleFeedScroll = (event) => {
+    onFeedScroll(event);
+    if (dragState.dragging || dragState.offsetY !== 0) {
+      resetDragState();
     }
   };
 
@@ -227,10 +255,11 @@ function HomeFeed({
       <div
         className="feed-scroll"
         ref={feedRef}
-        onScroll={onFeedScroll}
+        onScroll={handleFeedScroll}
         onTouchStart={handleFeedTouchStart}
         onTouchMove={handleFeedTouchMove}
         onTouchEnd={handleFeedTouchEnd}
+        onTouchCancel={handleFeedTouchCancel}
       >
         {videos.map((video, index) => {
           const shouldRenderHeavy = Math.abs(index - activeIndex) <= RENDER_RADIUS;
@@ -270,8 +299,6 @@ function HomeFeed({
                 seriesButtonText={video.seriesSummary}
                 episodes={video.episodes}
                 selectedEpisodeId={video.selectedEpisodeId}
-                switchDirection={switchSignal.key === video.seriesKey ? switchSignal.dir : 0}
-                switchTick={switchSignal.key === video.seriesKey ? switchSignal.tick : 0}
                 onSelectEpisode={(episodeId) => onSelectEpisode(video.seriesKey, episodeId)}
                 onNotInterested={() => onNotInterested(video)}
                 onReport={() => onReportVideo(video)}

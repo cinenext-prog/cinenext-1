@@ -16,8 +16,6 @@ const VideoPlayer = ({
   seriesButtonText,
   episodes,
   selectedEpisodeId,
-  switchDirection,
-  switchTick,
   onSelectEpisode,
   onNotInterested,
   onReport,
@@ -38,14 +36,12 @@ const VideoPlayer = ({
   const [showEpisodeSheet, setShowEpisodeSheet] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [qualityMode, setQualityMode] = useState('720p');
-  const [switchMotionClass, setSwitchMotionClass] = useState('');
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playError, setPlayError] = useState('');
   const [needUserStart, setNeedUserStart] = useState(false);
   const [resolvedSourceUrl, setResolvedSourceUrl] = useState(sourceUrl);
   const [hasSwitchedCdn, setHasSwitchedCdn] = useState(false);
-  const switchMotionTimerRef = useRef(0);
 
   const isHlsSource = typeof resolvedSourceUrl === 'string' && /\.m3u8(\?|$)/i.test(resolvedSourceUrl);
 
@@ -55,22 +51,6 @@ const VideoPlayer = ({
     setShowActionSheet(false);
     setShowEpisodeSheet(false);
   }, [sourceUrl]);
-
-  useEffect(() => {
-    if (!active || !switchDirection || !switchTick) {
-      return;
-    }
-
-    if (switchMotionTimerRef.current) {
-      window.clearTimeout(switchMotionTimerRef.current);
-    }
-
-    setSwitchMotionClass(switchDirection > 0 ? 'episode-switch-next' : 'episode-switch-prev');
-    switchMotionTimerRef.current = window.setTimeout(() => {
-      setSwitchMotionClass('');
-      switchMotionTimerRef.current = 0;
-    }, 260);
-  }, [active, switchDirection, switchTick, selectedEpisodeId]);
 
   const switchToBackupCdn = useCallback(() => {
     const current = String(resolvedSourceUrl || '');
@@ -431,9 +411,6 @@ const VideoPlayer = ({
       if (autoplayRetryTimerRef.current) {
         window.clearTimeout(autoplayRetryTimerRef.current);
       }
-      if (switchMotionTimerRef.current) {
-        window.clearTimeout(switchMotionTimerRef.current);
-      }
       if (timeRafRef.current) {
         window.cancelAnimationFrame(timeRafRef.current);
       }
@@ -442,7 +419,7 @@ const VideoPlayer = ({
 
   return (
     <div
-      className={`video-player ${switchMotionClass}`}
+      className="video-player"
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
