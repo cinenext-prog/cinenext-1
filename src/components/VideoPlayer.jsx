@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import '../player.css';
 
@@ -31,8 +31,38 @@ const VideoPlayer = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [playError, setPlayError] = useState('');
   const [needUserStart, setNeedUserStart] = useState(false);
+  const [resolvedSourceUrl, setResolvedSourceUrl] = useState(sourceUrl);
+  const [hasSwitchedCdn, setHasSwitchedCdn] = useState(false);
 
-  const isHlsSource = typeof sourceUrl === 'string' && /\.m3u8(\?|$)/i.test(sourceUrl);
+  const isHlsSource = typeof resolvedSourceUrl === 'string' && /\.m3u8(\?|$)/i.test(resolvedSourceUrl);
+
+  useEffect(() => {
+    setResolvedSourceUrl(sourceUrl);
+    setHasSwitchedCdn(false);
+  }, [sourceUrl]);
+
+  const switchToBackupCdn = useCallback(() => {
+    const current = String(resolvedSourceUrl || '');
+    if (!current || hasSwitchedCdn) {
+      return false;
+    }
+
+    let next = '';
+    if (current.includes('livepeercdn.com')) {
+      next = current.replace('livepeercdn.com', 'livepeercdn.studio');
+    } else if (current.includes('livepeercdn.studio')) {
+      next = current.replace('livepeercdn.studio', 'livepeercdn.com');
+    }
+
+    if (!next || next === current) {
+      return false;
+    }
+
+    setHasSwitchedCdn(true);
+    setResolvedSourceUrl(next);
+    setPlayError('当前线路不稳定，正在切换备用播放线路...');
+    return true;
+  }, [resolvedSourceUrl, hasSwitchedCdn]);
 
   const attemptAutoplay = () => {
     const video = videoRef.current;
@@ -102,7 +132,7 @@ const VideoPlayer = ({
     }
 
     const video = videoRef.current;
-    if (!video || !sourceUrl || !preload) {
+    if (!video || !resolvedSourceUrl || !preload) {
       return;
     }
 
@@ -120,17 +150,17 @@ const VideoPlayer = ({
     }
 
     if (isHlsSource && video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = sourceUrl;
+      video.src = resolvedSourceUrl;
     } else if (isHlsSource && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
       });
       hlsRef.current = hls;
-      hls.loadSource(sourceUrl);
+      hls.loadSource(resolvedSourceUrl);
       hls.attachMedia(video);
     } else {
-      video.src = sourceUrl;
+      video.src = resolvedSourceUrl;
     }
 
     return () => {
@@ -141,7 +171,7 @@ const VideoPlayer = ({
       video.removeAttribute('src');
       video.load();
     };
-  }, [sourceUrl, preload, playbackRate, isHlsSource]);
+  }, [resolvedSourceUrl, preload, playbackRate, isHlsSource]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -193,6 +223,10 @@ const VideoPlayer = ({
       attemptAutoplay();
     };
     const handleError = () => {
+      if (switchToBackupCdn()) {
+        return;
+      }
+
       const mediaError = video.error;
       const codeMap = {
         1: '加载被中止',
@@ -205,6 +239,7 @@ const VideoPlayer = ({
       onPlaybackEvent?.('error', video.currentTime, {
         code: mediaError?.code || null,
         reason,
+        sourceUrl: resolvedSourceUrl,
       });
     };
 
@@ -248,7 +283,7 @@ const VideoPlayer = ({
         timeRafRef.current = 0;
       }
     };
-  }, [active, blocked, onPlaybackEvent]);
+  }, [active, blocked, onPlaybackEvent, switchToBackupCdn, resolvedSourceUrl]);
 
   const togglePause = () => {
     const video = videoRef.current;
