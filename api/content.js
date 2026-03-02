@@ -80,6 +80,26 @@ const pickPlaybackId = (asset) => {
   return '';
 };
 
+const pickPlaybackUrl = (asset) => {
+  if (typeof asset?.playbackUrl === 'string' && asset.playbackUrl.trim()) {
+    return asset.playbackUrl.trim();
+  }
+
+  if (typeof asset?.playback_url === 'string' && asset.playback_url.trim()) {
+    return asset.playback_url.trim();
+  }
+
+  if (typeof asset?.source?.playbackUrl === 'string' && asset.source.playbackUrl.trim()) {
+    return asset.source.playbackUrl.trim();
+  }
+
+  if (typeof asset?.source?.playback_url === 'string' && asset.source.playback_url.trim()) {
+    return asset.source.playback_url.trim();
+  }
+
+  return '';
+};
+
 const slugify = (value) =>
   String(value || '')
     .trim()
@@ -120,6 +140,7 @@ const listLibrary = async (res) => {
       e.episode_number,
       e.title AS episode_title,
       e.playback_id,
+      e.playback_url,
       e.livepeer_asset_id,
       e.price_ton,
       e.is_free,
@@ -148,6 +169,7 @@ const listLibrary = async (res) => {
         episodeNumber: row.episode_number,
         title: row.episode_title,
         playbackId: row.playback_id,
+        playbackUrl: row.playback_url,
         livepeerAssetId: row.livepeer_asset_id,
         priceTon: row.price_ton,
         isFree: row.is_free,
@@ -169,6 +191,7 @@ const listFeed = async (res) => {
       e.episode_number,
       e.title AS episode_title,
       e.playback_id,
+      e.playback_url,
       e.livepeer_asset_id,
       e.is_free,
       e.price_ton
@@ -182,6 +205,7 @@ const listFeed = async (res) => {
   const videos = rows.map((row) => ({
     id: `db-${row.episode_id}`,
     playbackId: row.playback_id,
+    playbackUrl: row.playback_url || null,
     title: row.episode_title || `${row.drama_title} 第${row.episode_number}集`,
     seriesName: row.drama_title,
     episode: row.episode_number,
@@ -248,25 +272,36 @@ const upsertEpisode = async (req, res) => {
 
   const title = String(body.title || `${dramaTitle} 第${episodeNumber}集`).trim();
   const playbackId = String(body.playbackId || '').trim() || null;
+  const playbackUrl = String(body.playbackUrl || '').trim() || null;
   const livepeerAssetId = String(body.livepeerAssetId || '').trim() || null;
   const isFree = body.isFree !== false;
   const priceTon = Number(body.priceTon || 0);
 
   const { rows } = await query(
     `
-    INSERT INTO episodes (drama_id, episode_number, title, playback_id, livepeer_asset_id, is_free, price_ton, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+    INSERT INTO episodes (drama_id, episode_number, title, playback_id, playback_url, livepeer_asset_id, is_free, price_ton, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     ON CONFLICT (drama_id, episode_number)
     DO UPDATE SET
       title = EXCLUDED.title,
       playback_id = COALESCE(EXCLUDED.playback_id, episodes.playback_id),
+      playback_url = COALESCE(EXCLUDED.playback_url, episodes.playback_url),
       livepeer_asset_id = COALESCE(EXCLUDED.livepeer_asset_id, episodes.livepeer_asset_id),
       is_free = EXCLUDED.is_free,
       price_ton = EXCLUDED.price_ton,
       updated_at = NOW()
-    RETURNING id, drama_id, episode_number, title, playback_id, livepeer_asset_id, is_free, price_ton
+    RETURNING id, drama_id, episode_number, title, playback_id, playback_url, livepeer_asset_id, is_free, price_ton
     `,
-    [drama.id, episodeNumber, title, playbackId, livepeerAssetId, isFree, Number.isFinite(priceTon) ? priceTon : 0]
+    [
+      drama.id,
+      episodeNumber,
+      title,
+      playbackId,
+      playbackUrl,
+      livepeerAssetId,
+      isFree,
+      Number.isFinite(priceTon) ? priceTon : 0,
+    ]
   );
 
   return res.status(200).json({ episode: rows[0] });
@@ -295,6 +330,7 @@ const syncAssets = async (req, res) => {
     const episodeNumber = Math.max(1, Number(item.episodeNumber || 1));
     const livepeerAssetId = String(item.id || item.livepeerAssetId || '').trim() || null;
     const playbackId = String(item.playbackId || '').trim() || null;
+    const playbackUrl = String(item.playbackUrl || '').trim() || null;
 
     if (!dramaTitle) {
       continue;
@@ -305,16 +341,24 @@ const syncAssets = async (req, res) => {
 
     await query(
       `
-      INSERT INTO episodes (drama_id, episode_number, title, playback_id, livepeer_asset_id, is_free, price_ton, updated_at)
-      VALUES ($1, $2, $3, $4, $5, TRUE, 0, NOW())
+      INSERT INTO episodes (drama_id, episode_number, title, playback_id, playback_url, livepeer_asset_id, is_free, price_ton, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, TRUE, 0, NOW())
       ON CONFLICT (drama_id, episode_number)
       DO UPDATE SET
         title = EXCLUDED.title,
         playback_id = COALESCE(EXCLUDED.playback_id, episodes.playback_id),
+        playback_url = COALESCE(EXCLUDED.playback_url, episodes.playback_url),
         livepeer_asset_id = COALESCE(EXCLUDED.livepeer_asset_id, episodes.livepeer_asset_id),
         updated_at = NOW()
       `,
-      [drama.id, episodeNumber, String(item.name || item.title || `${dramaTitle} 第${episodeNumber}集`), playbackId, livepeerAssetId]
+      [
+        drama.id,
+        episodeNumber,
+        String(item.name || item.title || `${dramaTitle} 第${episodeNumber}集`),
+        playbackId,
+        playbackUrl,
+        livepeerAssetId,
+      ]
     );
 
     synced += 1;
@@ -428,6 +472,7 @@ const importFromLivepeer = async (req, res) => {
 
     const playbackId = pickPlaybackId(item);
     if (!playbackId) continue;
+    const playbackUrl = pickPlaybackUrl(item) || null;
 
     const name = String(item?.name || '').trim();
     const parsedName = parseNameInfo(name);
@@ -442,16 +487,24 @@ const importFromLivepeer = async (req, res) => {
 
     await query(
       `
-      INSERT INTO episodes (drama_id, episode_number, title, playback_id, livepeer_asset_id, is_free, price_ton, updated_at)
-      VALUES ($1, $2, $3, $4, $5, TRUE, 0, NOW())
+      INSERT INTO episodes (drama_id, episode_number, title, playback_id, playback_url, livepeer_asset_id, is_free, price_ton, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, TRUE, 0, NOW())
       ON CONFLICT (drama_id, episode_number)
       DO UPDATE SET
         title = EXCLUDED.title,
         playback_id = COALESCE(EXCLUDED.playback_id, episodes.playback_id),
+        playback_url = COALESCE(EXCLUDED.playback_url, episodes.playback_url),
         livepeer_asset_id = COALESCE(EXCLUDED.livepeer_asset_id, episodes.livepeer_asset_id),
         updated_at = NOW()
       `,
-      [drama.id, parsedName.episodeNumber, name || `${dramaTitle} 第${parsedName.episodeNumber}集`, playbackId, assetId]
+      [
+        drama.id,
+        parsedName.episodeNumber,
+        name || `${dramaTitle} 第${parsedName.episodeNumber}集`,
+        playbackId,
+        playbackUrl,
+        assetId,
+      ]
     );
 
     imported += 1;

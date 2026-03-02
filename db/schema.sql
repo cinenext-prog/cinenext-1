@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   title TEXT NOT NULL,
   summary TEXT NOT NULL DEFAULT '',
   playback_id TEXT,
+  playback_url TEXT,
   livepeer_asset_id TEXT,
   price_ton NUMERIC(18, 6) NOT NULL DEFAULT 0,
   is_free BOOLEAN NOT NULL DEFAULT TRUE,

@@ -104,6 +104,8 @@ export const normalizeAsset = (asset, index) => {
     return null;
   }
 
+  const explicitPlaybackUrl = toText(asset?.playbackUrl || asset?.playback_url).trim();
+
   const metadata = typeof asset?.meta === 'object' && asset?.meta
     ? asset.meta
     : typeof asset?.metadata === 'object' && asset?.metadata
@@ -130,7 +132,7 @@ export const normalizeAsset = (asset, index) => {
   return {
     id: String(asset?.id || playbackId),
     playbackId,
-    playbackUrl: toPlaybackUrl(playbackId),
+    playbackUrl: explicitPlaybackUrl || toPlaybackUrl(playbackId),
     coverUrl: toCoverUrl(playbackId),
     title: toText(asset?.name || metadata.title, nameMeta.title || `短剧 ${index + 1}`),
     seriesName: nameMeta.seriesName,

@@ -223,7 +223,7 @@ const normalizeBackendEpisode = (drama, episode) => ({
   status: drama.status || 'published',
   createdAt: episode.updatedAt || '',
   playbackId: String(episode.playbackId || ''),
-  playbackUrl: episode.playbackId ? playbackUrlFromId(episode.playbackId) : '',
+  playbackUrl: String(episode.playbackUrl || '').trim() || (episode.playbackId ? playbackUrlFromId(episode.playbackId) : ''),
   seriesName: drama.title,
   episodeNumber: Number(episode.episodeNumber || 9999),
 });
@@ -268,6 +268,7 @@ const syncAssetsToBackend = async (list, { strict = false } = {}) => {
         seriesName: item.seriesName,
         episodeNumber: item.episodeNumber,
         playbackId: item.playbackId,
+        playbackUrl: item.playbackUrl,
       })),
     },
   });

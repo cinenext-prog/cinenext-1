@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   title TEXT NOT NULL,
   summary TEXT NOT NULL DEFAULT '',
   playback_id TEXT,
+  playback_url TEXT,
   livepeer_asset_id TEXT,
   price_ton NUMERIC(18, 6) NOT NULL DEFAULT 0,
   is_free BOOLEAN NOT NULL DEFAULT TRUE,
@@ -38,6 +39,8 @@ CREATE TABLE IF NOT EXISTS episodes (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (drama_id, episode_number)
 );
+
+ALTER TABLE episodes ADD COLUMN IF NOT EXISTS playback_url TEXT;
 
 CREATE TABLE IF NOT EXISTS likes (
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
